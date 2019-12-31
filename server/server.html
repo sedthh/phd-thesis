@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<link href="../frontend/bootstrap.min.css" rel="stylesheet" id="bootstrap-css">
+	<script src="../frontend/jquery.min.js"></script>
+	<style>
+		body{
+			margin:0;
+			overflow:hidden;
+			background-color:#eee;
+			color:#222222;
+		}
+		#content{
+			display: block;
+			margin-left: auto;
+			margin-right: auto;
+			width: 90%;
+			height: 90%
+			text-align:center;
+			vertical-align: middle;
+		}
+		#content p, .centered{
+			margin: 0;
+			position: absolute;
+			top: 50%;
+			left: 50%;
+			transform: translate(-50%, -50%);
+			font-size: 24px;
+			font-weight:bold;
+		}
+		.button{
+			display: block;
+			margin: auto;
+			margin-top:24px;
+			text-align:center;
+		}
+		.required{
+			border: 5px solid #ff0000 !important;
+		}
+		.error{
+			color: #ee0000;
+		}
+	</style>
+</head>
+<body>
+	<div id="content">
+		<p>Connecting...</p>
+	</div>
+
+<script>
+$(function() {
+	var seed = parseInt(+new Date);
+	var url = new URLSearchParams(window.location.search)
+	var ip = url.has("ip") ? url.get("ip") : "127.0.0.1"
+	var port = url.has("port") ? url.get("port") : "42069"
+	var socket = "ws://" + ip + ":" + port + "/"
+	var ping = 0;
+	var status = 0;
+	var connected = false;
+	var error = false;
+	var language = url.has("language") ? (url.get("language") == "en" ? "_en" : "") : "";
+
+	// autoconnect
+	var ws = new WebSocket(socket);
+
+	ws.onclose = function(event) {
+		console.log(event);
+		connected = false;
+		if (!error){
+			$("#content").html("<p>Disconnected from server</p>")
+		}
+		ws = null;
+	};
+	ws.onerror = function(event) {
+        console.log(event);
+        error = true;
+        if (connected){
+			$("#content").html("<p>Disconnected from <i>" + socket + "</i><br />Attempting to reconnect...</p>")
+			window.setTimeout(window.location.reload.bind(window.location), 1000);
+        }else{
+        	if (!url.has("ip") || !url.has("port")){
+        		var page = window.location.pathname.split("/").slice(-1);
+        		$("#content").html("<p>Could not connect to <i>" + socket + "</i><br />Try to set GET parameters for page:<br /><i>" + page + "?ip=...&port=...</i></p>")
+        	}else{
+        		$("#content").html("<p>Could not connect to <i>" + socket + "</i></p>")
+        	}
+        }
+    };
+    ws.onopen = function(event) {
+		connected = true;
+		$("#content").html("<p>Connection established successfully...</p>")
+		send({
+			"key": "status",
+			"value": 0
+		});
+    };
+    ws.onmessage = function (event) {
+		data = JSON.parse(event["data"]);
+		timer = (+ new Date());
+		if (ping){
+			console.log("PING: " + (timer - ping));
+		}
+		ping = 0;
+
+		switch (data["key"]){
+			case "system":
+				console.log(data["value"]["msg"]);
+				break;
+			case "error":
+				$("#content").html('<p class="error">ERROR ' + data["value"]["code"] + '! ' + data["value"]["msg"] + '</p>');
+				return;
+			case "status":
+				status = parseInt(data["value"]);
+				if (status == 0){
+					send({"key": "start", "value": seed})
+					$("#content").html("<p>Experiment seed is " + seed + '<input type="button" class="button" value="Start" onclick="next();"/></p>');
+				}else{
+					render();
+				}
+				break;
+			case "render":
+				$("#content").html(data["value"]);
+				break;
+			default:
+				console.log(data);
+		}
+	};
+
+	function send(data){
+		if (ws){
+			if (!("from" in data)){
+				data["from"] = "server";
+			}
+			console.log(data);
+			ping = (+ new Date());
+			ws.send(JSON.stringify(data));
+		}
+	};
+
+	function render(){
+		page = ""
+		switch (status){
+			case 1:
+				page = "hello";
+			break;
+			case 2:
+				page = "login";
+			break;
+		}
+		if (page.length){
+			send({"key": "render", "value": page + language});
+		}
+	}
+
+	window.next = function(){
+		status += 1;
+		send({
+			"key": "status",
+			"value": status
+		});
+	}
+	window.fill = function(from, forms){
+		// check if all required forms are filled first
+		error = 0;
+		$(".centered").find("select, textarea, input").each(function(key, elem){
+			if($(elem).prop("required")){
+				if (!$(elem).val() || !$(elem).val().length) {
+					$(elem).addClass("required");
+					error += 1;
+				}
+			}
+		});
+		if (error){
+			return;
+		}
+
+		$(".centered").find("select, textarea, input").prop("disabled", true);
+		for (var key in forms){
+			var value = $("#" + key).val();
+			if (forms[key]){
+				send({"from":from, "key": key, "value": value});
+			}else{
+				obj = {}			// because
+				obj[key] = value;	// javascript
+				send({"from":from, "key": "meta", "value": obj});
+			}
+		}
+		next();
+	}
+});
+
+</script>
+</body>
+</html>

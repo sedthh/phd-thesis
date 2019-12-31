@@ -15,10 +15,11 @@ from os import path
 class Server:
 
 		LOG_TYPE = "csv"
+		HTML_TYPE = "html"
 		LOG_HEADSET = 10  # save every 10th update
 
 		def __init__(self, ip="", port=42069, fps=1,
-					log_level=3, log_folder="", log_prefix=""):
+					log_level=3, log_folder="", log_prefix="", frontend="../frontend"):
 			"""Init Server class. Will run on local IP:42069 by default.
 
 			Headset information will be broadcasted depending on the value of "fps",
@@ -36,6 +37,10 @@ class Server:
 			else:
 				raise IOError(f'"{log_folder}" is not a valid directory.')
 			self.log_prefix = log_prefix
+			if path.isdir(frontend):
+				self.frontend = frontend
+			else:
+				raise IOError(f'"{frontend}" is not a valid directory.')
 
 			self.connections = {}
 			self.environment = {}
@@ -104,7 +109,7 @@ class Server:
 
 			from_ = str(message["from"]).replace(";", ",")
 			key = str(message["key"]).replace(";", ",")
-			if message["value"] and type(message["value"]) not in (str, int, float, bool):
+			if type(message["value"]) not in (str, int, float, bool):
 				value = json.dumps(message["value"])
 			else:
 				value = str(message["value"]).replace(";", ",")
@@ -155,7 +160,21 @@ class Server:
 
 					# setup environment before accepting messages
 					if message["from"] == "server":
-						if message["key"] == "start":
+						if message["key"] == "status":
+							if self.environment and int(message["value"]) > 0:
+								self.environment["status"] = int(message["value"]);
+							await self.echo(client, {
+								"key": "status",
+								"value": (self.environment["status"] if self.environment else 0)
+							})
+							continue
+						elif message["key"] == "render":
+							await self.echo(client, {
+								"key": "render",
+								"value": self.html(message["value"])
+							})
+							continue
+						elif message["key"] == "start":
 							if self.environment:
 								self.log(f'ERROR! Request from {self.id(client)} tried to re-initiate environment.', 2)
 								await self.system(client, 403)
@@ -180,7 +199,7 @@ class Server:
 								self.environment[message["from"]][message["key"]] = message["value"]
 								self.dump(message)
 								# update info for everyone else
-								self.broadcast(message, client)
+								await self.broadcast(message, client)
 							elif message["key"] == "meta":
 								for key, value in message["value"].items():
 									self.environment[message["from"]]["meta"][key] = value
@@ -248,9 +267,10 @@ class Server:
 		def setup(self, seed):
 			# TODO: generate decoy data and games using ai
 			self.environment = {
-				"seed": seed,
-				"stage": "",
-				"games": 0,
+				"seed": seed,  # random seed
+				"status": 0,  # current state of experiment
+				"stage": "",  # background of experiment in VR
+				"games": 0,  # Nth number of game
 				"subject": self._setup_player(),
 				"ai": self._setup_player(),
 			}
@@ -296,6 +316,11 @@ class Server:
 					await client.send(json.dumps(payload))
 			except Exception as e:
 				self.log(f"Unable to send payload to {self.id(client)}: {e}", 1)
+
+		async def echo(self, client, payload):
+			payload["from"] = (self.connections[client]["type"] if self.connections[client]["type"] else "server")
+			payload = self._payload(payload)
+			await self.send(client, payload)
 
 		async def system(self, client, code=200, msg=""):
 			"""Send system and error messages to client."""
@@ -355,7 +380,17 @@ class Server:
 				return "Internal server error."
 			return "Unknown."
 
+		def html(self, file):
+			"""A horrible hack to get around AJAX cross origin requests"""
+			file = path.join(self.frontend, f'{file}.{self.HTML_TYPE}')
+			try:
+				with codecs.open(file, 'r', encoding='utf-8') as f:
+					return f.read()
+			except Exception as e:
+				self.log(e)
+				return ""
+
 
 if __name__ == "__main__":
-	server = Server(log_folder="../experiments", log_prefix=f"{Server.now('%Y-%m-%d_%H-%M-%S')}_")
+	server = Server(log_folder="../experiments", log_prefix=f"{Server.now('%Y-%m-%d')}_")
 	server.run()
