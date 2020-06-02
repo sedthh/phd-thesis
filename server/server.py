@@ -6,20 +6,22 @@ import json
 import asyncio
 import websockets
 import atexit
-import numpy as np
 from socket import gethostbyname, gethostname
 from datetime import datetime
 from os import path
 
+from game import Game
 
 class Server:
 
-		LOG_TYPE = "csv"
 		HTML_TYPE = "html"
+		LOG_TYPE = "csv"
 		LOG_HEADSET = 10  # save every 10th update
+		LOG_HEADSET_PREFIX = "headset_"
+
 
 		def __init__(self, ip="", port=42069, fps=1,
-					log_level=3, log_folder="", log_prefix="", frontend="../frontend"):
+					log_level=3, log_prefix="", log_folder="", frontend="../frontend"):
 			"""Init Server class. Will run on local IP:42069 by default.
 
 			Headset information will be broadcasted depending on the value of "fps",
@@ -32,11 +34,11 @@ class Server:
 			self.port = port
 			self.frequency = 1.0 / fps
 			self.log_level = log_level
+			self.log_prefix = log_prefix
 			if path.isdir(log_folder):
 				self.log_folder = log_folder
 			else:
 				raise IOError(f'"{log_folder}" is not a valid directory.')
-			self.log_prefix = log_prefix
 			if path.isdir(frontend):
 				self.frontend = frontend
 			else:
@@ -60,7 +62,7 @@ class Server:
 				return datetime.now().strftime(f)
 
 		# start server
-		def run(self, ai=None):
+		def run(self):
 			"""Run server based on class information."""
 			self.service = websockets.serve(self.thread, self.ip, self.port)
 			self.tasks = [asyncio.ensure_future(self.service), asyncio.ensure_future(self.tic())]
@@ -91,6 +93,9 @@ class Server:
 				print(f'{self.now("%H:%M:%S")} > {msg}')
 
 		def dump(self, message):
+			# TODO
+			return message
+			'''
 			"""Save relevant user events to CSV file."""
 			if not self.environment or "seed" not in self.environment:
 				self.log("Experiment environment is not yet set up. Can not save state.")
@@ -101,24 +106,25 @@ class Server:
 
 			file = path.join(self.log_folder, f'{self.log_prefix}{self.environment["seed"]}.{self.LOG_TYPE}')
 			try:
-				f = codecs.open(file, 'a+', encoding='utf-8')
+				f = codecs.open(file, "a+", encoding="utf-8")
 			except Exception as e:
 				self.log(e)
 				return
 			timestamp = self.now('%Y-%m-%d %H:%M:%S.%f')  # microseconds
 
-			from_ = str(message["from"]).replace(";", ",")
-			key = str(message["key"]).replace(";", ",")
+			from_ = str(message["from"]).replace(';', ',')
+			key = str(message["key"]).replace(';', ',')
 			if type(message["value"]) not in (str, int, float, bool):
 				value = json.dumps(message["value"])
 			else:
-				value = str(message["value"]).replace(";", ",")
+				value = str(message["value"]).replace(';', ',')
 			try:
 				f.write(f'{timestamp};{from_};{key};{value};\r\n')
 			except Exception as e:
 				self.log(e)
 			finally:
 				f.close()
+			'''
 
 		def id(self, client):
 			"""Return printable info on connection."""
@@ -137,103 +143,81 @@ class Server:
 				while True:
 					try:
 						message = json.loads(await client.recv())
+
+						if "seed" in message:
+							self.environment = {
+								"seed": int(message["seed"]),
+								"status": 0,
+								"session": "idle",
+								"subject": {
+									"name": "",
+									"gender": None,
+									"avatar": "",
+									"score": 0,
+									"score_all": 0,
+									"moves": []
+								},
+								"opponent": {
+									"name": "",
+									"gender": None,
+									"avatar": "",
+									"score": 0,
+									"score_all": 0,
+									"moves": []
+								},
+								"game": Game(int(message["seed"]))
+							}
+							self.log(f'Starting experiment with seed {int(message["seed"])}')
+						if self.environment:
+							if "status" in message:
+								self.environment["status"] = int(message["status"])
+							if "name" in message:
+								self.environment["subject"]["name"] = str(message["name"])
+							if "gender" in message:
+								self.environment["subject"]["gender"] = bool(message["gender"])
+							if "avatar" in message:
+								self.environment["subject"]["avatar"] = str(message["avatar"])
+							if "form" in message:
+								for key, value in message["form"].items():
+									# TODO: save key-value for forms
+									pass
+							if "session" in message:
+								if message["session"] == "start":
+									if self.environment["subject"]["avatar"] and self.environment["subject"]["gender"] is not None:
+										self.environment["session"] = "start"
+										self.environment["game"].generate(self.environment["subject"]["avatar"], self.environment["subject"]["gender"])
+										self.log(f'Game session generated.', 3)
+									else:
+										# avatar and gender not set
+										self.send(client, {"error": True})
+								elif message["session"] == "pause":
+									pass
+								elif message["session"] == "resume":
+									pass
+						else:
+							self.log(f'Environment is not yet set, message was discarded.', 3)
 					except json.decoder.JSONDecodeError:
 						self.log(f'ERROR! {self.id(client)} has sent malformed JSON data', 2)
-						await self.system(client, 406)
 						continue
-					if "from" not in message or "key" not in message or "value" not in message:
-						self.log(f'ERROR! {self.id(client)} has sent JSON without all of these keys present: from, key, value', 2)
-						await self.system(client, 406)
+					except KeyError as k_e:
+						self.log(f'ERROR! {self.id(client)} has caused error with key {k_e}', 2)
 						continue
-
-					# allow ping if JSON is valid
-					self.connections[client]["updated"] = self.now()
-					if message["from"] in ("server", "subject", "ai"):
-						self.connections[client]["type"] = message["from"]
-					else:
-						self.log(f'ERROR! {self.id(client)} requested invalid client type', 2)
-						await self.system(client, 400)
-						continue
-					if message["key"] == "ping":
-						await self.system(client, 220)
-						continue
-
-					# setup environment before accepting messages
-					if message["from"] == "server":
-						if message["key"] == "status":
-							if self.environment and int(message["value"]) > 0:
-								self.environment["status"] = int(message["value"]);
-							await self.echo(client, {
-								"key": "status",
-								"value": (self.environment["status"] if self.environment else 0)
-							})
-							continue
-						elif message["key"] == "render":
-							await self.echo(client, {
-								"key": "render",
-								"value": self.html(message["value"])
-							})
-							continue
-						elif message["key"] == "start":
-							if self.environment:
-								self.log(f'ERROR! Request from {self.id(client)} tried to re-initiate environment.', 2)
-								await self.system(client, 403)
-								continue
-							else:
-								self.setup(int(message["value"]))
-								await self.system(client, 200, "Environment ready.")
-						elif message["key"] == "stop":
-							self.environment = {}
-							await self.system(client, 200, "Environment deleted.")
-						self.dump(message)
-						continue
-					if not self.environment:
-						self.log(f'ERROR! Request from {self.id(client)} was rejected, because the environment is not yet ready', 2)
-						await self.system(client, 403)
-						continue
-
-					# decode valid JSON from client
-					try:
-						if message["from"] in ("subject", "ai"):
-							if message["key"] in ("name", "avatar", "choice"):
-								self.environment[message["from"]][message["key"]] = message["value"]
-								self.dump(message)
-								# update info for everyone else
-								await self.broadcast(message, client)
-							elif message["key"] == "meta":
-								for key, value in message["value"].items():
-									self.environment[message["from"]]["meta"][key] = value
-								self.dump(message)
-							elif message["key"] == "transform":
-								self.environment[message["from"]][message["key"]] = self._validate_transform(message["value"])
-							elif message["key"] == "headset":
-								self.connections[client]["headset"] = bool(message["value"])
-							else:
-								self.log(f'ERROR! {self.id(client)} sent message with unknown "key":"{message["key"]}"', 2)
-								await self.system(client, 400)
-						else:
-							self.log(f'ERROR! {self.id(client)} sent message with unknown "from":"{message["from"]}"', 2)
-							await self.system(client, 400)
-
-					except Exception as e:
-						self.log(f'ERROR! {self.id(client)} has sent data that can not be parsed: {e}', 2)
-						await self.system(client, 500)
 
 			# disconnecting
 			except websockets.ConnectionClosed:
 				self.log(f'{self.id(client)} has disconnected', 1)
 			except websockets.WebSocketProtocolError:
-				self.log(f'ERROR! {self.id(client)} broke protocol', 1)
+				self.log(f'ERROR! {self.id(client)} broke protocol', 2)
 			except websockets.PayloadTooBig:
-				self.log(f'ERROR! {self.id(client)} has sent a payload that is too large to process', 1)
+				self.log(f'ERROR! {self.id(client)} has sent a payload that is too large to process', 2)
 			except Exception as e:
 				self.log(f'ERROR! {self.id(client)} has caused an unknown exception: {e}', 1)
 			finally:
 				try:
-					await self.disconnect(client)
+					#await self.disconnect(client)
+					pass
 				except Exception as e:
 					self.log(f'{self.id(client)} failed to disconnect safely: {e}', 2)
-					del self.connections[client]
 
 		def connect(self, client, data={}):
 			"""Create user data when connection is established."""
@@ -241,7 +225,6 @@ class Server:
 				return
 			default = {
 				"type": "",
-				"headset": False,
 				"connected": self.now(),
 				"updated": self.now(),
 				"ip": (client.remote_address[0] if client.remote_address else "0.0.0.0"),
@@ -255,6 +238,8 @@ class Server:
 
 		async def tic(self):
 			"""Generate tics in background to send headset information async."""
+			# TODO
+			'''
 			current = self.now()
 			i = 0
 			while True:
@@ -263,29 +248,8 @@ class Server:
 					await self.headsets((i % self.LOG_HEADSET == 0))
 					i += 1
 				await asyncio.sleep(self.frequency / 10.0)
-
-		def setup(self, seed):
-			# TODO: generate decoy data and games using ai
-			self.environment = {
-				"seed": seed,  # random seed
-				"status": 0,  # current state of experiment
-				"stage": "",  # background of experiment in VR
-				"games": 0,  # Nth number of game
-				"subject": self._setup_player(),
-				"ai": self._setup_player(),
-			}
-			self.log(f'Setting up new environment with seed {seed}', 1)
-
-		def _setup_player(self):
-			return {
-				"name": "",
-				"avatar": "",
-				"transform": self._validate_transform(),
-				"choice": "",
-				"points": 0,
-				"sum": 0,
-				"meta": {}
-			}
+			'''
+			return
 
 		@staticmethod
 		def _validate_transform(transform={}):
@@ -296,18 +260,9 @@ class Server:
 				for cord in ("x", "y", "z"):
 					try:
 						result[key][cord] = float(transform[key][cord])
-					except:
+					except Exception as _:
 						result[key][cord] = 0.
 			return result
-
-		def _payload(self, payload={}):
-			default = {
-				"time": self.now(),
-				"from": "server",
-				"key": "foo",
-				"value": "bar"
-			}
-			return {key:(payload[key] if key in payload else default[key]) for key in ("time", "from", "key", "value")}
 
 		async def send(self, client, payload):
 			"""Force send any message to a single client through websocket connection."""
@@ -317,69 +272,6 @@ class Server:
 			except Exception as e:
 				self.log(f"Unable to send payload to {self.id(client)}: {e}", 1)
 
-		async def echo(self, client, payload):
-			payload["from"] = (self.connections[client]["type"] if self.connections[client]["type"] else "server")
-			payload = self._payload(payload)
-			await self.send(client, payload)
-
-		async def system(self, client, code=200, msg=""):
-			"""Send system and error messages to client."""
-			if client in self.connections:
-				payload = self._payload({
-					"key": ("system" if (code >= 100 and code < 400) else "error"),
-					"value": {
-						"code": code,
-						"msg": (msg if msg else self._get_system_message(code))
-					}
-				})
-				await self.send(client, payload)
-
-		async def broadcast(self, payload, ignore=None):
-			"""Make sure payload is valid, then send it to all clients
-			(except to optional ignore=user)."""
-			payload = self._payload(payload)
-			for recipient in self.connections:
-				if ignore and recipient != ignore:
-					await self.send(recipient, payload)
-
-		async def headsets(self, save=False):
-			"""Send all headset data to all users in all rooms (called on tics)."""
-			if not self.environment:
-				return
-			for type_ in ("subject", "ai"):
-				payload = self._payload({
-					"from": type_,
-					"key": "transform",
-					"value": self.environment[type_]["transform"]
-				})
-				for recipient in self.connections:
-					if self.connections[recipient]["headset"]:
-						if self.connections[recipient]["type"] != type_:
-							await self.send(recipient, payload)
-				if save:
-					self.dump(payload)
-
-		@staticmethod
-		def _get_system_message(code):
-			"""Return system codes similar to HTTP / FTP status (200-300 ok, 400-500 error)."""
-			# ok
-			if code == 200:
-				return "Ok."  # may be overwritten
-			elif code == 202:
-				return "Access granted."
-			elif code == 220:
-				return "Pong."
-			# error
-			elif code == 400:
-				return "Bad request."
-			elif code == 403:
-				return "Access denied."
-			elif code == 406:
-				return "Data object has invalid structure."
-			elif code == 500:
-				return "Internal server error."
-			return "Unknown."
-
 		def html(self, file):
 			"""A horrible hack to get around AJAX cross origin requests"""
 			file = path.join(self.frontend, f'{file}.{self.HTML_TYPE}')
@@ -388,7 +280,7 @@ class Server:
 					return f.read()
 			except Exception as e:
 				self.log(e)
-				return ""
+				return "Internal Server Error."
 
 
 if __name__ == "__main__":

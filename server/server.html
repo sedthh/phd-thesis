@@ -49,7 +49,9 @@
 
 <script>
 $(function() {
-	var seed = parseInt(+new Date);
+    var skip_questions = true;
+
+	var seed = parseInt(parseInt(+new Date).toString().slice(-9, -2));
 	var url = new URLSearchParams(window.location.search)
 	var ip = url.has("ip") ? url.get("ip") : "127.0.0.1"
 	var port = url.has("port") ? url.get("port") : "42069"
@@ -72,7 +74,7 @@ $(function() {
 		ws = null;
 	};
 	ws.onerror = function(event) {
-        console.log(event);
+        console.error(event);
         error = true;
         if (connected){
 			$("#content").html("<p>Disconnected from <i>" + socket + "</i><br />Attempting to reconnect...</p>")
@@ -107,13 +109,13 @@ $(function() {
 				console.log(data["value"]["msg"]);
 				break;
 			case "error":
-				$("#content").html('<p class="error">ERROR ' + data["value"]["code"] + '! ' + data["value"]["msg"] + '</p>');
+				$("#content").html('<p class="error">ERROR ' + data["value"]["code"] + '! ' + data["value"]["msg"] + '<input type="button" class="button" value="Restart experiment" onclick="restart();" /></p>');
 				return;
 			case "status":
 				status = parseInt(data["value"]);
 				if (status == 0){
 					send({"key": "start", "value": seed})
-					$("#content").html("<p>Experiment seed is " + seed + '<input type="button" class="button" value="Start" onclick="next();"/></p>');
+					$("#content").html("<p>Experiment seed is " + seed + '<input type="button" class="button" value="Start experiment" onclick="next();"/></p>');
 				}else{
 					render();
 				}
@@ -121,6 +123,17 @@ $(function() {
 			case "render":
 				$("#content").html(data["value"]);
 				break;
+			case "ready":
+			    /*
+			    if (data["from"] == "subject"){
+                    if (data["value"]){
+                        if (status == 5){
+                            next();
+                        }
+                    }
+                }
+                */
+                break;
 			default:
 				console.log(data);
 		}
@@ -131,7 +144,6 @@ $(function() {
 			if (!("from" in data)){
 				data["from"] = "server";
 			}
-			console.log(data);
 			ping = (+ new Date());
 			ws.send(JSON.stringify(data));
 		}
@@ -144,7 +156,19 @@ $(function() {
 				page = "hello";
 			break;
 			case 2:
+				page = "quest1";
+			break;
+			case 3:
+				page = "quest2";
+			break;
+			case 4:
 				page = "login";
+			break;
+			case 5:
+			    page = "ready";
+			break;
+			case 6:
+			    page = "game";
 			break;
 		}
 		if (page.length){
@@ -152,7 +176,16 @@ $(function() {
 		}
 	}
 
+    window.restart = function(stop=true){
+        if (stop){
+            send({"key": "stop", "value":null});
+        }
+        window.location.reload();
+    }
 	window.next = function(){
+	    if (skip_questions && status < 3){
+	        status = 3;
+	    }
 		status += 1;
 		send({
 			"key": "status",
