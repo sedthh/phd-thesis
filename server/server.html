@@ -10,8 +10,8 @@
 			background-color:#eee;
 			color:#222222;
 		}
-		#content{
-			display: block;
+		.step{
+			display: none;
 			margin-left: auto;
 			margin-right: auto;
 			width: 90%;
@@ -19,7 +19,7 @@
 			text-align:center;
 			vertical-align: middle;
 		}
-		#content p, .centered{
+		.step p, .centered{
 			margin: 0;
 			position: absolute;
 			top: 50%;
@@ -40,27 +40,49 @@
 		.error{
 			color: #ee0000;
 		}
+		#output{
+			display:block;
+		}
 	</style>
 </head>
 <body>
-	<div id="content">
+	<div id="init" class="step">
+		<p>
+			Azonosító: <input type="text" id="sid" placeholder="" required="required" autocomplete="off"/>
+			<input type="hidden" id="client" value="frontend" />
+			<input type="button" class="button" value="Indítás" onclick="fill({'sid': true, 'client': true});"/>
+		</p>
+	</div>
+	<div id="hello" class="step">
+		<p>
+			Hello ez egy kísérlet.<br />
+			- nincs epilepsziád
+			<input type="button" class="button" value="Elolvastam és elfogadom az itt leírtakat" onclick="next();"/>
+		</p>
+	</div>
+	<div id="q1" class="step">
+		<p>
+
+		</p>
+	</div>
+
+	<div id="output" class="step">
 		<p>Connecting...</p>
 	</div>
 
 <script>
 $(function() {
-    var skip_questions = true;
-
-	var seed = parseInt(parseInt(+new Date).toString().slice(-9, -2));
 	var url = new URLSearchParams(window.location.search)
 	var ip = url.has("ip") ? url.get("ip") : "127.0.0.1"
 	var port = url.has("port") ? url.get("port") : "42069"
+	var skip = url.has("skip") ? parseInt(url.get("skip")) : 0
 	var socket = "ws://" + ip + ":" + port + "/"
 	var ping = 0;
-	var status = 0;
 	var connected = false;
 	var error = false;
-	var language = url.has("language") ? (url.get("language") == "en" ? "_en" : "") : "";
+
+	var current = -1;
+	var steps = ["init", "hello", "q1", "q2", "login", "ready", "vr"];
 
 	// autoconnect
 	var ws = new WebSocket(socket);
@@ -69,7 +91,7 @@ $(function() {
 		console.log(event);
 		connected = false;
 		if (!error){
-			$("#content").html("<p>Disconnected from server</p>")
+			output("Disconnected from server")
 		}
 		ws = null;
 	};
@@ -77,24 +99,22 @@ $(function() {
         console.error(event);
         error = true;
         if (connected){
-			$("#content").html("<p>Disconnected from <i>" + socket + "</i><br />Attempting to reconnect...</p>")
+			output("Disconnected from <i>" + socket + "</i><br />Attempting to reconnect...")
 			window.setTimeout(window.location.reload.bind(window.location), 1000);
         }else{
         	if (!url.has("ip") || !url.has("port")){
         		var page = window.location.pathname.split("/").slice(-1);
-        		$("#content").html("<p>Could not connect to <i>" + socket + "</i><br />Try to set GET parameters for page:<br /><i>" + page + "?ip=...&port=...</i></p>")
+        		output("Could not connect to <i>" + socket + "</i><br />Try to set GET parameters for page:<br /><i>" + page + "?ip=...&port=...</i>")
         	}else{
-        		$("#content").html("<p>Could not connect to <i>" + socket + "</i></p>")
+        		output("Could not connect to <i>" + socket + "</i>")
         	}
         }
     };
     ws.onopen = function(event) {
 		connected = true;
-		$("#content").html("<p>Connection established successfully...</p>")
-		send({
-			"key": "status",
-			"value": 0
-		});
+		var last_sid = localStorage.getItem("sid") || 0;
+		$("#sid").attr("placeholder", last_sid);
+		next();
     };
     ws.onmessage = function (event) {
 		data = JSON.parse(event["data"]);
@@ -104,122 +124,96 @@ $(function() {
 		}
 		ping = 0;
 
-		switch (data["key"]){
-			case "system":
-				console.log(data["value"]["msg"]);
-				break;
-			case "error":
-				$("#content").html('<p class="error">ERROR ' + data["value"]["code"] + '! ' + data["value"]["msg"] + '<input type="button" class="button" value="Restart experiment" onclick="restart();" /></p>');
-				return;
-			case "status":
-				status = parseInt(data["value"]);
-				if (status == 0){
-					send({"key": "start", "value": seed})
-					$("#content").html("<p>Experiment seed is " + seed + '<input type="button" class="button" value="Start experiment" onclick="next();"/></p>');
-				}else{
-					render();
-				}
-				break;
-			case "render":
-				$("#content").html(data["value"]);
-				break;
-			case "ready":
-			    /*
-			    if (data["from"] == "subject"){
-                    if (data["value"]){
-                        if (status == 5){
-                            next();
-                        }
-                    }
-                }
-                */
-                break;
-			default:
-				console.log(data);
-		}
-	};
-
-	function send(data){
-		if (ws){
-			if (!("from" in data)){
-				data["from"] = "server";
-			}
-			ping = (+ new Date());
-			ws.send(JSON.stringify(data));
-		}
-	};
-
-	function render(){
-		page = ""
-		switch (status){
-			case 1:
-				page = "hello";
-			break;
-			case 2:
-				page = "quest1";
-			break;
-			case 3:
-				page = "quest2";
-			break;
-			case 4:
-				page = "login";
-			break;
-			case 5:
-			    page = "ready";
-			break;
-			case 6:
-			    page = "game";
-			break;
-		}
-		if (page.length){
-			send({"key": "render", "value": page + language});
-		}
+		console.log(data)
 	}
+
+	window.send = function(data){
+		if (ws){
+			ping = (+ new Date());
+			payload = {
+				"type": "info",
+				"data": data
+			};
+			console.log(payload);
+			ws.send(JSON.stringify(payload));
+		}
+	};
 
     window.restart = function(stop=true){
         if (stop){
-            send({"key": "stop", "value":null});
+            send({"terminate": false});
         }
         window.location.reload();
-    }
+    };
+
 	window.next = function(){
-	    if (skip_questions && status < 3){
-	        status = 3;
-	    }
-		status += 1;
-		send({
-			"key": "status",
-			"value": status
-		});
-	}
-	window.fill = function(from, forms){
+		if (current !=-1 && skip){
+			current += skip;
+			skip = 0;
+			if (current >= steps.length){
+				current = steps.length - 1;
+				console.log("Can not skip more than " + steps.length);
+			}
+		}else{
+			if (current < steps.length - 1){
+				current += 1;
+			}else{
+				console.log("Maximum steps reached at " + current);
+			}
+		}
+		$(".step").hide();
+		$("#" + steps[current]).show();
+		$("input[type='button']").prop("disabled", false);
+	};
+
+	window.output = function(data){
+		$(".step").hide();
+		$("#output").html("<p>" + data + "</p>").show();
+	};
+
+	window.fill = function(forms){
 		// check if all required forms are filled first
-		error = 0;
-		$(".centered").find("select, textarea, input").each(function(key, elem){
-			if($(elem).prop("required")){
-				if (!$(elem).val() || !$(elem).val().length) {
-					$(elem).addClass("required");
-					error += 1;
+		var missing = 0;
+		var payload = {};
+		for (var key in forms){
+			var test = $("#" + key);
+			if (test.length){
+				if (test.prop("required")){
+					if (!test.val() || ! test.val().length){
+						test.addClass("required");
+						missing += 1;
+					}else if (key == "sid"){
+						localStorage.setItem("sid", test.val());
+					}
+				}
+				if (forms[key]){
+					payload[key] = test.val();
+				}else{
+					obj = {};				// because
+					obj[key] = test.val();	// javascript
+					payload[key] = obj;
 				}
 			}
-		});
-		if (error){
-			return;
 		}
-
-		$(".centered").find("select, textarea, input").prop("disabled", true);
-		for (var key in forms){
-			var value = $("#" + key).val();
-			if (forms[key]){
-				send({"from":from, "key": key, "value": value});
-			}else{
-				obj = {}			// because
-				obj[key] = value;	// javascript
-				send({"from":from, "key": "meta", "value": obj});
+		if (!missing){
+			for (var key in forms){
+				$("#" + key).prop("disabled", true);
 			}
+			$("input[type='button']").prop("disabled", true);
+			send(payload);
+			next();
 		}
-		next();
-	}
+	};
+
+	window.onkeydown = evt => {
+		switch (evt.keyCode) {
+			// Enter is 13
+			// F2
+        	case 113:
+				next();
+				return False;
+		}
+	};
 });
 
 </script>
