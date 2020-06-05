@@ -19,8 +19,7 @@ class Server:
 	LOG_HEADSET_PREFIX = "headset_"
 
 	def __init__(self, ip="", port=42069, fps=1,
-				log_level=3, log_folder="", log_info="", log_game="", log_headset="",
-				frontend="../frontend"):
+				log_level=3, log_folder="", log_info="", log_game="", log_headset=""):
 		"""Init Server class. Will run on local IP:42069 by default.
 
 		Headset information will be broadcasted depending on the value of "fps",
@@ -39,11 +38,7 @@ class Server:
 		if path.isdir(log_folder):
 			self.log_folder = log_folder
 		else:
-			raise IOError(f'"{log_folder}" is not a valid directory.')
-		if path.isdir(frontend):
-			self.frontend = frontend
-		else:
-			raise IOError(f'"{frontend}" is not a valid directory.')
+			raise IOError(f'ERROR! "{log_folder}" is not a valid directory.')
 
 		self.connections = {}
 		self.environment = {}
@@ -69,7 +64,7 @@ class Server:
 	@atexit.register
 	def stop(self):
 		"""Stop server (hopefully called when closing application)."""
-		self.log('Closing server.')
+		self.log('Closing server')
 		self.terminate()
 		for client in self.connections:
 			self.disconnect(client)
@@ -92,25 +87,32 @@ class Server:
 			else:
 				print(f'{self.now("%H:%M:%S")} > {msg}')
 
-	def save_info(self, key, value):
-		"""Save user info to CSV file."""
-		if not self.log_info:
-			return
-
+	def _save_data(self, file, key, value):
 		if not self.environment or "sid" not in self.environment:
-			self.log("Experiment environment is not yet set up. Can not save to CSV.")
+			self.log("ERROR! Experiment environment is not yet set up, can not save to CSV.", 1)
 			return
-
 		key, value = self._for_csv(key), self._for_csv(value)
 		timestamp = self.now('%Y-%m-%d %H:%M:%S.%f')  # microseconds
-		file = path.join(self.log_folder, self.log_info)
+		file = path.join(self.log_folder, file)
 		try:
 			f = codecs.open(file, "a+", encoding="utf-8")
 			f.write(f'{timestamp};{self.environment["sid"]};{key};{value};\r\n')
-		except Exception as e:
-			self.log(e)
+		except Exception as ef:
+			self.log(ef)
 		finally:
 			f.close()
+
+	def save_info(self, key, value=""):
+		"""Save user info to CSV file."""
+		if not self.log_info:
+			return
+		self._save_data(self.log_info, key, value)
+
+	def save_game(self, key, value=""):
+		"""Save user info to CSV file."""
+		if not self.log_game:
+			return
+		self._save_data(self.log_game, key, value)
 
 	def id(self, client):
 		"""Return printable info on connection."""
@@ -134,78 +136,115 @@ class Server:
 
 					# see if message object has all required fields
 					if "type" not in message or "data" not in message:
-						self.log(f'ERROR! Message should consist of: {"type":"str", "data":{...}}', 1)
+						self.log(f'ERROR! Message should consist of: {"type":"str", "data":{...}}.', 2)
 						continue
 					elif message["type"] not in ("info", "game"):
-						self.log(f'ERROR! Message type can be either "info" or "game"', 1)
-						continue
-
-					# can not continue without subject id
-					if message["type"] == "info" and "sid" in message["data"]:
-						sid = self._for_csv(message["data"]["sid"])
-						if sid:
-							self.environment["sid"] = sid
-							self.log(f'Subject ID set. Starting experiment.')
-						else:
-							self.log(f'ERROR! Subject id is invalid.', 1)
-							continue
-					if "sid" not in self.environment:
-						self.log(f'ERROR! All messages will be ignored until "sid" is set.', 1)
+						self.log(f'ERROR! Message type can be either "info" or "game".', 2)
 						continue
 
 					# receiving user info / form values
 					elif message["type"] == "info":
+
+						# can not continue without subject id
+						if "sid" in message["data"]:
+							sid = int(self._for_csv(message["data"]["sid"]))
+							if sid:
+								self.environment["sid"] = sid
+								self.log(f'Subject ID was set, starting experiment', 1)
+							else:
+								self.log(f'ERROR! Subject id is invalid.', 2)
+								continue
+						if "sid" not in self.environment:
+							self.log(f'ERROR! All messages will be ignored until "sid" is set.', 2)
+							continue
+
+						# check data
 						for key, value in message["data"].items():
 							if key == "terminate":
 								self.save_info(key, bool(value))
 								if value:
-									self.log(f'Experiment was a success. Now resetting environment.\n')
+									self.log(f'Experiment was a success. Now resetting environment\n', 1)
 								else:
-									self.log(f'Experiment failed. Now resetting environment.\n')
+									self.log(f'Experiment failed. Now resetting environment\n', 1)
 								self.terminate()
 								break
 							elif key == "client":
 								self.connections[client]["client"] = value
+								self.log(f'Client {self.id(client)} was identified', 2)
 							elif key in ("nick", "avatar", "gender"):
 								self.save_info(key, value)
 								self.environment[key] = value
-								self.log(f'Subject\'s {key} was set to {value}')
+								self.log(f'Subject\'s {key} was set to {value}', 1)
 							elif key.startswith("form_"):
 								self.save_info(key, value)
 							elif key != "sid":
-								self.log(f'ERROR! Unknown key "{key}"')
+								self.log(f'ERROR! Unknown "info" key "{key}"', 2)
 
+					# receiving game data
 					elif message["type"] == "game":
-						ready = True
-						for test in ("nick", "avatar", "gender"):
-							if test not in self.environment:
-								self.log(f'The game can not start until the subject has set their {test}')
-								ready = False
-						if not ready:
+
+						if "sid" not in self.environment:
+							self.log(f'ERROR! All messages will be ignored until "sid" is set.', 2)
 							continue
 
-						for key, value in message["data"]:
-							if key in ("start", "stop", "pause", "resume"):
+						# can not continue if subject's profile is not set and game is not connected
+						if "connect" in message["data"]:
+							ready = True
+							for test in ("nick", "avatar", "gender"):
+								if test not in self.environment:
+									self.log(f'The game can not start until the subject has set their {test}', 2)
+									ready = False
+							if ready:
+								self.environment["ready"] = True
+								self.environment["game"] = Game(self.environment["sid"])  # use SID as random seed
+								self.environment["game"].generate(self.environment["avatar"], bool(self.environment["gender"]))
+
+								self.save_game("connect", message["data"]["connect"])
+								await self.send(client, "game", {"ready": True})
+								self.log(f'Subject {self.id(client)} has started playing', 1)
+							else:
+								await self.send(client, "error", {"message": "Subject is not ready setting up their profile."})
+						if "ready" not in self.environment or not self.environment["ready"]:
+							self.log('ERROR! Subject needs to set up their profile before the experiment can start.', 2)
+							continue
+
+						# check data
+						for key, value in message["data"].items():
+							if key == "client":
+								self.connections[client]["client"] = value
+								self.log(f'Client {self.id(client)} was identified', 2)
+							elif key == "search":
+								self.save_game(key, value)
 								pass
+							elif key == "play":
+								self.save_game(key, value)
+							elif key == "disconnect":
+								self.environment["ready"] = False
+								self.save_game(key, value)
+								await self.send(client, "game", {"ready": False})
+								self.log(f'Subject {self.id(client)} has finished playing', 1)
+							elif key != "connect":
+								self.log(f'ERROR! Unknown "game" key "{key}"', 2)
 
 				except json.decoder.JSONDecodeError:
-					self.log(f'ERROR! {self.id(client)} has sent malformed JSON data', 2)
+					self.log(f'ERROR! {self.id(client)} has sent malformed JSON data.', 2)
 					continue
 
 		# disconnecting
 		except websockets.ConnectionClosed:
 			self.log(f'{self.id(client)} has disconnected', 1)
 		except websockets.WebSocketProtocolError:
-			self.log(f'ERROR! {self.id(client)} broke protocol', 2)
+			self.log(f'ERROR! {self.id(client)} broke protocol.', 2)
 		except websockets.PayloadTooBig:
-			self.log(f'ERROR! {self.id(client)} has sent a payload that is too large to process', 2)
+			self.log(f'ERROR! {self.id(client)} has sent a payload that is too large to process.', 2)
 		except Exception as e:
-			self.log(f'ERROR! {self.id(client)} has caused an unknown exception: {e}', 1)
+			# requires attention even from the researcher, therefor this error has log_level=1
+			self.log(f'ERROR! {self.id(client)} has caused an unknown exception: {e}.', 1)
 		finally:
 			try:
 				self.disconnect(client)
 			except Exception as e:
-				self.log(f'{self.id(client)} failed to disconnect safely: {e}', 2)
+				self.log(f'{self.id(client)} failed to disconnect safely: {e}.', 2)
 
 	def connect(self, client, data={}):
 		"""Create user data when connection is established."""
@@ -243,23 +282,26 @@ class Server:
 				# TODO: broadcast headset data
 			await asyncio.sleep(self.frequency / 10.0)
 
-	async def send(self, client, payload):
+	async def send(self, client, type_, data):
+		if type_ not in ("info", "game", "error"):
+			self.log(f'ERROR! Unknown payload type "{type_}".', 2)
+			return
+		if not isinstance(data, dict):
+			self.log(f'ERROR! Payload data must be dict.', 2)
+			return
+		payload = {"type": type_, "data": data}
+		await self.post(client, payload)
+
+	async def post(self, client, payload):
 		"""Force send any message to a single client through websocket connection."""
 		try:
 			if client in self.connections:
-				await client.send(json.dumps(payload))
-		except Exception as e:
-			self.log(f"Unable to send payload to {self.id(client)}: {e}", 1)
-
-	def html(self, file):
-		"""A horrible hack to get around AJAX cross origin requests"""
-		file = path.join(self.frontend, f'{file}.{self.HTML_TYPE}')
-		try:
-			with codecs.open(file, 'r', encoding='utf-8') as f:
-				return f.read()
-		except Exception as e:
-			self.log(e)
-			return "Internal Server Error."
+				payload = json.dumps(payload)
+				await client.send(payload)
+		except TypeError as ej:
+			self.log(f'ERROR! Unable to dump payload: {ej}.', 2)
+		except Exception as ep:
+			self.log(f"ERROR! Unable to send payload to {self.id(client)}: {ep}.", 2)
 
 	@staticmethod
 	def _for_csv(value):
