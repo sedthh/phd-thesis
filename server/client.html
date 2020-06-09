@@ -43,9 +43,127 @@
 		#output{
 			display:block;
 		}
+
+		hr{
+			color:#eee;
+			background-color:#eee;
+			margin:20px;
+		}
+		#game{
+			margin-top:8px;
+		}
+		#environment{
+			margin-bottom:16px;
+			font-size:1.4em;
+			text-align:center;
+		}
+
+		.player{
+			width:90%px;
+			height:300px;
+			position:relative;
+			margin:auto;
+			padding:5px;
+			display:block;
+		}
+		.left{
+			width:70%;
+			height:300px;
+			margin:auto;
+			display:inline;
+			position:absolute;
+			top:0px;
+			left:0px;
+		}
+		.right{
+			width:29%;
+			height:300px;
+			margin:auto;
+			display:inline;
+			position:absolute;
+			top:0px;
+			left:66%;
+			text-align:center;
+		}
+		.button{
+			display: inline-block;
+			border:5px solid #eee;
+			width:45%;
+			height:100%;
+			margin:auto;
+			text-align:center;
+			padding-top:130px;
+			font-size:1.2em;
+		}
+		.nick{
+			display:block;
+			padding:5px;
+			margin:auto;
+			font-size:1.2em;
+			font-weight:bold;
+		}
+		.avatar{
+			display:block;
+			border:1px solid #eee;
+			width:100px;
+			height:100px;
+			margin:auto;
+			text-align:center;
+		}
+		.score{
+			display:block;
+			padding:5px;
+			margin:auto;
+			font-size:1.8em;
+		}
+		.click{
+			cursor:pointer;
+		}
+		.chose{
+			color:#888;
+		}
+		.select{
+			background-color:#ccc;
+			color:#222;
+		}
 	</style>
 </head>
 <body>
+	<div id="game" class="step">
+		<div id="environment">STAGE</div>
+		<div id="opponent" class="player">
+			<div class="left">
+				<div class="button chose">
+					COOPERATE
+				</div>
+				<div class="button chose">
+					DEFECT
+				</div>
+			</div>
+			<div class="right">
+				<div class="nick">NICK</div>
+				<div class="avatar">:)</div>
+				<div class="score">0 (+0)</div>
+			</div>
+		</div>
+		<hr />
+		<div id="subject" class="player">
+			<div class="left">
+				<div class="button click">
+					COOPERATE
+				</div>
+				<div class="button click select">
+					DEFECT
+				</div>
+			</div>
+			<div class="right">
+				<div class="nick">NICK</div>
+				<div class="avatar">:)</div>
+				<div class="score">0 (+0)</div>
+			</div>
+		</div>
+
+	</div>
 	<div id="output" class="step">
 		<p>Connecting...</p>
 	</div>
@@ -95,10 +213,15 @@ $(function() {
 		timer = (+ new Date());
 		if (ping){
 			console.log("PING: " + (timer - ping));
-		}
+		};
 		ping = 0;
 
-		console.log(data);
+		if (data["type"] == "error"){
+			output(data["data"]["message"]);
+		}else{
+			$("#output").hide();
+			$("#game").show();
+		}
 	}
 
 	window.send = function(data){
@@ -121,7 +244,7 @@ $(function() {
     };
 
 	window.output = function(data){
-		$(".step").hide();
+		$("#game").hide();
 		$("#output").html("<p>" + data + "</p>").show();
 	};
 

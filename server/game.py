@@ -14,25 +14,35 @@ class Game:
 	OPPONENTS = ["mirror", "unknown", "doctor", "pirate", "robot", "king", "old", "young", "foreigner"]
 	DUPLICATE_FROM = 2
 	DUPLICATE_TO = 4
-	NUMBER_OF_GAMES_MIN = 3
-	NUMBER_OF_GAMES_MAX = 7
+	NUMBER_OF_GAMES = 5
 
 	def __init__(self, seed):
 		self.seed = seed
-		self.current = 0
-		self.score_current = 0
-		self.score_all = 0
 		self.color = ""
+
+		self.current = -1
+
 		self.bots = []
+		self.score_subject_current = 0
+		self.score_subject_all = 0
+		self.score_bot_current = 0
+		self.score_bot_all = 0
+		self.move_subject = None
+		self.move_bot = None
 
 	def generate(self, avatar, gender):
 		"""Generate environment and opponents based on seed"""
 		np.random.seed(self.seed)
-		self.current = 0
-		self.score_current = 0
-		self.score_all = 0
+		self.current = -1
+		self.score_subject_current = 0
+		self.score_subject_all = 0
+		self.score_bot_current = 0
+		self.score_bot_all = 0
 		self.color = np.random.choice(self.COLORS)
+
 		self.bots = []
+		self.move_subject = None
+		self.move_bot = None
 
 		opponents = np.random.permutation(self.OPPONENTS)
 		genders = np.random.choice([False, True], size=9)
@@ -56,12 +66,13 @@ class Game:
 				names.append(m_names[i])
 
 		# create a copy of a certain opponent for rematch
-		strategies = self._replay(np.random.permutation(self.STRATEGIES))
-		stages = self._replay(np.random.permutation(self.STAGES))
-		opponents = self._replay(opponents)
-		genders = self._replay(genders)
-		names = self._replay(names)
-		rounds = np.random.randint(self.NUMBER_OF_GAMES_MIN, self.NUMBER_OF_GAMES_MAX + 1, len(names))
+		strategies = self._rematch(np.random.permutation(self.STRATEGIES))
+		stages = self._rematch(np.random.permutation(self.STAGES))
+		opponents = self._rematch(opponents)
+		genders = self._rematch(genders)
+		names = self._rematch(names)
+		#rounds = np.random.randint(self.NUMBER_OF_GAMES_MIN, self.NUMBER_OF_GAMES_MAX + 1, len(names))
+		rounds = self.NUMBER_OF_GAMES
 
 		# create bots based on generated data
 		for name, opponent, gender, stage, strategy, round \
@@ -69,23 +80,51 @@ class Game:
 			self.bots.append(Bot(name, avatar, gender, stage, strategy, round))
 		return self
 
-	def _replay(self, data):
+	def _rematch(self, data):
 		"""Include the same opponent and environment twice"""
 		return np.concatenate((data[:self.DUPLICATE_TO],
 							   [data[self.DUPLICATE_FROM]],
 							   data[self.DUPLICATE_TO:]))
 
-	def play(self, move):
+	def search(self):
 		if not self.bots:
 			raise ValueError("Environment is not yet generated")
-		if self.current < len(self.bots):
-			moves_left, user_move, bot_move, user_gain, bot_gain = self.bots[self.current].play(move)
-			self.score_current += user_gain
-			self.score_all += user_gain
-			print(self.score_all, self.score_current, moves_left, user_move, bot_move, user_gain, bot_gain)
-			if moves_left == 0:
-				self.current += 1
-				self.score_current = 0
+		self.move_subject = None
+		self.move_bot = None
+		self.score_subject_current = 0
+		self.score_bot_current = 0
+		self.current += 1
+		if self.current >= len(self.bots):
+			return False
+		return True
+
+	def play_subject(self, move):
+		if not self.bots:
+			raise ValueError("Environment is not yet generated")
+		self.move_subject = move
+		if self.move_bot is not None:
+			self._play_game()
+
+	def play_bot(self):
+		if not self.bots:
+			raise ValueError("Environment is not yet generated")
+		self.move_bot = self.bots[self.current].move()
+		if self.move_subject is not None:
+			self._play_game()
+
+	def _play_game(self):
+		if not self.bots:
+			raise ValueError("Environment is not yet generated")
+		if self.move_bot is None or self.move_subject is None:
+			raise ValueError("Both subject and bot has to make a move")
+		rounds_left, bot_gain, subject_gain = self.bots[self.current].play(self.move_bot, self.move_subject)
+		self.move_bot = None
+		self.move_subject = None
+		self.score_bot_current += bot_gain
+		self.score_bot_all += bot_gain
+		self.score_subject_current += subject_gain
+		self.score_subject_all += subject_gain
+		return rounds_left, self.score_bot_current, self.score_subject_current
 
 
 class Bot:
@@ -98,26 +137,22 @@ class Bot:
 		self.strategy = strategy
 		self.round = round
 
-		self.history_me = []
-		self.history_you = []
-		self.score_bot = 0
-		print(strategy, round)
+		self.history_bot = []
+		self.history_subject = []
+		# print(strategy, round)
 
 	def reset(self):
-		self.history_me = []
-		self.history_you = []
-		self.score_bot = 0
+		self.history_bot = []
+		self.history_subject = []
 
-	def play(self, you_move):
-		me_move = self.get_strategy()
-		you_p, me_p = self.score(you_move, me_move)
-		self.score_bot += me_p
+	def play(self, bot_move, subject_move):
+		b_p, s_p = self.score(bot_move, subject_move)
 		self.round -= 1
-		self.history_me.append(me_move)
-		self.history_you.append(you_move)
-		return self.round, you_move, me_move, you_p, me_p
+		self.history_bot.append(bot_move)
+		self.history_subject.append(subject_move)
+		return self.round, b_p, s_p
 
-	def get_strategy(self):
+	def move(self):
 		if self.strategy == "all_c":
 			"""nice, deterministic"""
 			return True

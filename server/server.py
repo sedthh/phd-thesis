@@ -195,13 +195,16 @@ class Server:
 									self.log(f'The game can not start until the subject has set their {test}', 2)
 									ready = False
 							if ready:
-								self.environment["ready"] = True
-								self.environment["game"] = Game(self.environment["sid"])  # use SID as random seed
-								self.environment["game"].generate(self.environment["avatar"], bool(self.environment["gender"]))
+								if "ready" not in self.environment or not self.environment["ready"]:
+									self.environment["ready"] = True
+									self.environment["game"] = Game(self.environment["sid"])  # use SID as random seed
+									self.environment["game"].generate(self.environment["avatar"], bool(self.environment["gender"]))
 
-								self.save_game("connect", message["data"]["connect"])
-								await self.send(client, "game", {"ready": True})
-								self.log(f'Subject {self.id(client)} has started playing', 1)
+									self.save_game("connect", message["data"]["connect"])
+									await self.send(client, "game", {"ready": True})
+									self.log(f'Subject {self.id(client)} has started playing', 1)
+								else:
+									self.log(f'Subject {self.id(client)} has reconnected', 1)
 							else:
 								await self.send(client, "error", {"message": "Subject is not ready setting up their profile."})
 						if "ready" not in self.environment or not self.environment["ready"]:
@@ -272,14 +275,31 @@ class Server:
 		"""Terminate experiment and allow a new one"""
 		self.environment = {}
 
+	def timeout(self, function, delay):
+		if "trigger" not in self.environment:
+			self.environment["trigger"] = {}
+		stamp = self.now() + delay
+		while stamp in self.environment["trigger"]:
+			stamp += 1
+		self.environment["trigger"][stamp] = function
+
 	# async
 	async def tic(self):
-		"""Generate tics in background to send headset information async."""
+		"""Generate tics in background to send information async."""
 		current = self.now()
 		while True:
 			if current + self.frequency < self.now():
 				current = self.now()
-				# TODO: broadcast headset data
+				try:
+					if "trigger" in self.environment and self.environment["trigger"]:
+						for stamp in self.environment["trigger"]:
+							if stamp <= current:
+								self.environment["trigger"][stamp]()
+								self.environment["trigger"][stamp] = None
+						# delete None
+						self.environment["trigger"] = {k: v for k, v in self.environment["trigger"].items() if v is not None}
+				except Exception as et:
+					self.log(f'ERROR! Tic generated exception: {et}.')
 			await asyncio.sleep(self.frequency / 10.0)
 
 	async def send(self, client, type_, data):
