@@ -129,6 +129,9 @@
 	</style>
 </head>
 <body>
+	<div id="loading" class="step">
+		<p><input id="search" type="button" value="Search for match" onclick="send({'search':true})"/></p>
+	</div>
 	<div id="game" class="step">
 		<div id="environment">STAGE</div>
 		<div id="opponent" class="player">
@@ -206,10 +209,11 @@ $(function() {
     };
     ws.onopen = function(event) {
 		connected = true;
-		send({"connect": true, "client":"vr"});
+		send({"connect": true, "type":"game"});
     };
     ws.onmessage = function (event) {
 		data = JSON.parse(event["data"]);
+		console.log(data)
 		timer = (+ new Date());
 		if (ping){
 			console.log("PING: " + (timer - ping));
@@ -219,8 +223,16 @@ $(function() {
 		if (data["type"] == "error"){
 			output(data["data"]["message"]);
 		}else{
-			$("#output").hide();
-			$("#game").show();
+			$(".step").hide();
+			for (key in data["data"]){
+				switch (key){
+					case "connected":
+						if (data["data"]["connected"]){
+							$("#loading").show();
+						}
+					break;
+				}
+			}
 		}
 	}
 
@@ -244,7 +256,7 @@ $(function() {
     };
 
 	window.output = function(data){
-		$("#game").hide();
+		$(".step").hide();
 		$("#output").html("<p>" + data + "</p>").show();
 	};
 

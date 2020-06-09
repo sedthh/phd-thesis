@@ -2,12 +2,13 @@
 # -*- coding: utf-8 -*-
 
 import numpy as np
+import asyncio
 
 
 class Game:
 
-	F_NAMES = -1 * np.arange(20) - 1  # TODO: add list of names
-	M_NAMES = np.arange(20) + 1  # TODO: ad list of names
+	F_NICKS = -1 * np.arange(20) - 1  # TODO: add list of names
+	M_NICKS = np.arange(20) + 1  # TODO: ad list of names
 	COLORS = ["red", "green"]
 	STRATEGIES = ["tft", "grim", "pavlov", "susp_tft", "hard_majo", "per_dc", "all_c", "all_d", "random"]
 	STAGES = ["temple", "jail", "lab", "home", "forest", "station", "beach", "junkyard", "tron"]
@@ -56,28 +57,27 @@ class Game:
 		genders[mirror] = gender
 
 		# generate names based on opponents' gender
-		f_names = np.random.permutation(self.F_NAMES)
-		m_names = np.random.permutation(self.M_NAMES)
-		names = []
+		f_nicks = np.random.permutation(self.F_NICKS)
+		m_nicks = np.random.permutation(self.M_NICKS)
+		nicks = []
 		for i, g in enumerate(genders):
 			if g:
-				names.append(f_names[i])
+				nicks.append(f_nicks[i])
 			else:
-				names.append(m_names[i])
+				nicks.append(m_nicks[i])
 
 		# create a copy of a certain opponent for rematch
 		strategies = self._rematch(np.random.permutation(self.STRATEGIES))
 		stages = self._rematch(np.random.permutation(self.STAGES))
 		opponents = self._rematch(opponents)
 		genders = self._rematch(genders)
-		names = self._rematch(names)
-		#rounds = np.random.randint(self.NUMBER_OF_GAMES_MIN, self.NUMBER_OF_GAMES_MAX + 1, len(names))
-		rounds = self.NUMBER_OF_GAMES
+		nicks = self._rematch(nicks)
+		rounds = np.ones(len(strategies)) * self.NUMBER_OF_GAMES
 
 		# create bots based on generated data
-		for name, opponent, gender, stage, strategy, round \
-				in zip(names, opponents, genders, stages, strategies, rounds):
-			self.bots.append(Bot(name, avatar, gender, stage, strategy, round))
+		for nick, opponent, gender, stage, strategy, round \
+				in zip(nicks, opponents, genders, stages, strategies, rounds):
+			self.bots.append(Bot(nick, avatar, gender, stage, strategy, round))
 		return self
 
 	def _rematch(self, data):
@@ -95,51 +95,76 @@ class Game:
 		self.score_bot_current = 0
 		self.current += 1
 		if self.current >= len(self.bots):
-			return False
-		return True
+			return -1
+		return self.current
+
+	def get_environment(self):
+		if not self.bots:
+			raise ValueError("Environment is not yet generated")
+		if self.current >= len(self.bots):
+			raise ValueError("Game is already over, no more environments are available")
+		env = self.bots[self.current].get_environment()
+		env["color"] = self.color  # color is same for all bots
+		return env
 
 	def play_subject(self, move):
 		if not self.bots:
 			raise ValueError("Environment is not yet generated")
 		self.move_subject = move
-		if self.move_bot is not None:
-			self._play_game()
+		return self.move_bot is not None
 
-	def play_bot(self):
+	async def play_bot(self):
 		if not self.bots:
 			raise ValueError("Environment is not yet generated")
+		await asyncio.sleep(np.random.rand() * 3)
 		self.move_bot = self.bots[self.current].move()
-		if self.move_subject is not None:
-			self._play_game()
+		return self.move_subject is not None
 
-	def _play_game(self):
+	def score_game(self):
 		if not self.bots:
 			raise ValueError("Environment is not yet generated")
 		if self.move_bot is None or self.move_subject is None:
 			raise ValueError("Both subject and bot has to make a move")
 		rounds_left, bot_gain, subject_gain = self.bots[self.current].play(self.move_bot, self.move_subject)
+		tmp_bot, tmp_subject = self.move_bot, self.move_subject
 		self.move_bot = None
 		self.move_subject = None
 		self.score_bot_current += bot_gain
 		self.score_bot_all += bot_gain
 		self.score_subject_current += subject_gain
 		self.score_subject_all += subject_gain
-		return rounds_left, self.score_bot_current, self.score_subject_current
+		return {
+			"rounds_left": rounds_left,
+			"score_bot": self.score_bot_current,
+			"score_subject": self.score_subject_current,
+			"move_bot": tmp_bot,
+			"move_subject": tmp_subject
+		}
 
 
 class Bot:
 
-	def __init__(self, name, avatar, gender, stage, strategy, round):
-		self.name = name
+	def __init__(self, nick, avatar, gender, stage, strategy, round):
+		self.nick = nick
 		self.avatar = avatar
 		self.gender = gender
 		self.stage = stage
 		self.strategy = strategy
 		self.round = round
+		self.loading = np.random.rand() * 2.
 
 		self.history_bot = []
 		self.history_subject = []
 		# print(strategy, round)
+
+	def get_environment(self):
+		return {
+			"nick": str(self.nick),
+			"avatar": str(self.avatar),
+			"gender": bool(self.gender),
+			"stage": str(self.stage),
+			"loading": float(self.loading)
+		}
 
 	def reset(self):
 		self.history_bot = []
@@ -161,24 +186,24 @@ class Bot:
 			return False
 		elif self.strategy == "per_dc":  # CyclerDC / Alternating
 			"""deterministic"""
-			return bool(len(self.history_me) % 2)
+			return bool(len(self.history_bot) % 2)
 		elif self.strategy == "tft":
 			"""nice, forgiving, retaliate"""
-			return True if not self.history_you else self.history_you[-1]
+			return True if not self.history_subject else self.history_subject[-1]
 		elif self.strategy == "grim":  # Grim trigger / Grudger / Spiteful
 			"""nice, retaliate"""
-			return True if not self.history_you else (False not in self.history_you)
+			return True if not self.history_subject else (False not in self.history_subject)
 		elif self.strategy == "pavlov":  # Simpleton / Win stay, lose switch
 			"""nice, forgiving, retaliate, envious"""
-			if not self.history_me or not self.history_you:
+			if not self.history_bot or not self.history_subject:
 				return True
-			return self.history_me[-1] if self.history_you[-1] else not self.history_me[-1]
+			return self.history_bot[-1] if self.history_subject[-1] else not self.history_bot[-1]
 		elif self.strategy == "susp_tft":  # Mistrust
 			"""forgiving, retaliate"""
-			return False if not self.history_you else self.history_you[-1]
+			return False if not self.history_subject else self.history_subject[-1]
 		elif self.strategy == "hard_majo":  # Hard Go By Majority
 			"""nice, forgiving, retaliate"""
-			return 2 * np.sum(self.history_you) > len(self.history_you)
+			return 2 * np.sum(self.history_subject) > len(self.history_subject)
 		elif self.strategy == "random":
 			"""stohastic"""
 			return np.random.choice([True, False])

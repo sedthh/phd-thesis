@@ -118,8 +118,8 @@ class Server:
 		"""Return printable info on connection."""
 		if client not in self.connections:
 			return 'UNIDENTIFIED CONNECTION'
-		if self.connections[client]["client"]:
-			return f'{self.connections[client]["ip"]} ({self.connections[client]["client"]})'
+		if self.connections[client]["type"]:
+			return f'{self.connections[client]["ip"]} ({self.connections[client]["type"]})'
 		return f'{self.connections[client]["ip"]}'
 
 	async def thread(self, client, _):
@@ -147,7 +147,11 @@ class Server:
 
 						# can not continue without subject id
 						if "sid" in message["data"]:
-							sid = int(self._for_csv(message["data"]["sid"]))
+							try:
+								sid = int(self._for_csv(message["data"]["sid"]))
+							except Exception as ei:
+								self.log(f'ERROR! Subject ID can only be numeric, stopping experiment.', 1)
+								return
 							if sid:
 								self.environment["sid"] = sid
 								self.log(f'Subject ID was set, starting experiment', 1)
@@ -168,8 +172,8 @@ class Server:
 									self.log(f'Experiment failed. Now resetting environment\n', 1)
 								self.terminate()
 								break
-							elif key == "client":
-								self.connections[client]["client"] = value
+							elif key == "type":
+								self.connections[client]["type"] = value
 								self.log(f'Client {self.id(client)} was identified', 2)
 							elif key in ("nick", "avatar", "gender"):
 								self.save_info(key, value)
@@ -200,10 +204,14 @@ class Server:
 									self.environment["game"] = Game(self.environment["sid"])  # use SID as random seed
 									self.environment["game"].generate(self.environment["avatar"], bool(self.environment["gender"]))
 
-									self.save_game("connect", message["data"]["connect"])
-									await self.send(client, "game", {"ready": True})
+									self.save_game("connected", "")
+									await self.send(client, "game", {"connected": True})
 									self.log(f'Subject {self.id(client)} has started playing', 1)
 								else:
+									# reconecting
+									self.save_game("reconnected", "")
+									env = self.environment["game"].get_environment()
+									await self.send(client, "game", env)
 									self.log(f'Subject {self.id(client)} has reconnected', 1)
 							else:
 								await self.send(client, "error", {"message": "Subject is not ready setting up their profile."})
@@ -213,14 +221,25 @@ class Server:
 
 						# check data
 						for key, value in message["data"].items():
-							if key == "client":
-								self.connections[client]["client"] = value
+							if key == "type":
+								self.connections[client]["type"] = value
 								self.log(f'Client {self.id(client)} was identified', 2)
 							elif key == "search":
-								self.save_game(key, value)
-								pass
+								search = self.environment["game"].search()
+								if search >= 0:
+									env = self.environment["game"].get_environment()
+									self.save_game(key, search)
+									for env_key in env:
+										self.save_game(env_key, env[env_key])
+									await self.hook(lambda: self.send(client, "game", env), env["loading"])
+									await self.hook(lambda: self.move_bot(client), env["loading"] + 1.)
+								else:
+									# no more games to play, subject can exit VR
+									await self.broadcast({""})
+
 							elif key == "play":
-								self.save_game(key, value)
+								self.save_game("move_subject", value)
+
 							elif key == "disconnect":
 								self.environment["ready"] = False
 								self.save_game(key, value)
@@ -254,7 +273,7 @@ class Server:
 		if client in self.connections:
 			return
 		default = {
-			"client": "unknown",
+			"type": "unknown",
 			"connected": self.now(),
 			"updated": self.now(),
 			"ip": (client.remote_address[0] if client.remote_address else "0.0.0.0"),
@@ -275,7 +294,8 @@ class Server:
 		"""Terminate experiment and allow a new one"""
 		self.environment = {}
 
-	def timeout(self, function, delay):
+	# async
+	async def hook(self, function, delay):
 		if "trigger" not in self.environment:
 			self.environment["trigger"] = {}
 		stamp = self.now() + delay
@@ -283,7 +303,25 @@ class Server:
 			stamp += 1
 		self.environment["trigger"][stamp] = function
 
-	# async
+	async def move_bot(self, client):
+		if "game" not in self.environment:
+			self.log("ERROR! Game environment is not set, can not make move.")
+			return
+		if await self.environment["game"].play_bot():
+			await self.score_match(client, "move_user")
+		else:
+			self.save_game("move_bot", self.environment["game"].move_bot)
+			await self.send(client, "game", {"move": True})
+
+	async def score_match(self, client, ignore_save=""):
+		results = self.environment["game"]
+		for key in results:
+			if key != ignore_save:
+				self.save_game(key, results[key])
+		await self.send(client, "game", results)
+
+
+
 	async def tic(self):
 		"""Generate tics in background to send information async."""
 		current = self.now()
@@ -294,7 +332,7 @@ class Server:
 					if "trigger" in self.environment and self.environment["trigger"]:
 						for stamp in self.environment["trigger"]:
 							if stamp <= current:
-								self.environment["trigger"][stamp]()
+								await self.environment["trigger"][stamp]()
 								self.environment["trigger"][stamp] = None
 						# delete None
 						self.environment["trigger"] = {k: v for k, v in self.environment["trigger"].items() if v is not None}
@@ -302,7 +340,9 @@ class Server:
 					self.log(f'ERROR! Tic generated exception: {et}.')
 			await asyncio.sleep(self.frequency / 10.0)
 
+	# send payload
 	async def send(self, client, type_, data):
+		"""Create payload and send it to client"""
 		if type_ not in ("info", "game", "error"):
 			self.log(f'ERROR! Unknown payload type "{type_}".', 2)
 			return
@@ -311,6 +351,16 @@ class Server:
 			return
 		payload = {"type": type_, "data": data}
 		await self.post(client, payload)
+
+	async def broadcast(self, data):
+		"""Send data to all clients with their "type" set"""
+		if not isinstance(data, dict):
+			self.log(f'ERROR! Payload data must be dict.', 2)
+			return
+		for client in self.connections:
+			if self.connections[client]["type"] in ("info", "game"):
+				payload = {"type": self.connections[client]["type"], "data": data}
+				await self.post(client, payload)
 
 	async def post(self, client, payload):
 		"""Force send any message to a single client through websocket connection."""
