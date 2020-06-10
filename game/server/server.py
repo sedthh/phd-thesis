@@ -15,23 +15,16 @@ from game import Game
 
 class Server:
 
-	def __init__(self, ip="", port=42069, fps=1,
-				log_level=3, log_folder="", log_info="", log_game="", log_headset=""):
-		"""Init Server class. Will run on local IP:42069 by default.
-
-		Headset information will be broadcasted depending on the value of "fps",
-		sending it more frequently from the client side will have no effect.
-		fps = 10  # resend headset transformation 10 times a second
-
-		"""
+	def __init__(self, ip="", port=42069,
+				log_level=3, log_folder="", log_info="", log_game=""):
+		"""Init Server class. Will run on local IP:42069 by default."""
 
 		self.ip = ip if ip else gethostbyname(gethostname())
 		self.port = port
-		self.frequency = 1.0 / fps
+		self.frequency = 1.0 / 10.  # fps=10
 		self.log_level = log_level
 		self.log_info = log_info
 		self.log_game = log_game
-		self.log_headset = log_headset
 		if path.isdir(log_folder):
 			self.log_folder = log_folder
 		else:
@@ -432,8 +425,16 @@ class Server:
 
 
 if __name__ == "__main__":
-	server = Server(log_folder="../experiments",
-					log_info=f"{Server.now('%Y-%m-%d')}_info.csv",
-					log_game=f"{Server.now('%Y-%m-%d')}_game.csv")
+	import argparse
+
+	parser = argparse.ArgumentParser("Run server from command line")
+	parser.add_argument("-ip", help="IP of server, defaults to current IP", type=str, default="", required=False)
+	parser.add_argument("-port", help="Port of server, defaults to 42069", type=int, default=42069, required=False)
+	parser.add_argument("-log_level", help="Log level for debugging", type=int, default=3, required=False)
+	parser.add_argument("-log_folder", help="Folder for logs", type=str, default="../experiments", required=False)
+	parser.add_argument("-log_info", help="File name of Info logs in 'log_folder'", type=str, default=f"{Server.now('%Y-%m-%d')}_info.csv", required=False)
+	parser.add_argument("-log_game", help="File name of Info logs in 'log_folder'", type=str, default=f"{Server.now('%Y-%m-%d')}_game.csv", required=False)
+	args = parser.parse_args()
+	server = Server(ip=args.ip, port=args.port, log_level=args.log_level, log_folder=args.log_folder, log_info=args.log_info, log_game=args.log_game)
 	server.run()
 
