@@ -94,6 +94,7 @@
 			text-align:center;
 			padding-top:130px;
 			font-size:1.2em;
+			backgorund-color:#333;
 		}
 		.nick{
 			display:block;
@@ -120,49 +121,73 @@
 			cursor:pointer;
 		}
 		.chose{
-			color:#888;
+
+		}
+		.cooperate.chose{
+			background-color:#00cc00;
+		}
+		.defect.chose{
+			background-color:#cc0000;
 		}
 		.select{
-			background-color:#ccc;
-			color:#222;
+			border-color:#cccc00;
+		}
+		.red{
+			color:#cc0000;
+		}
+		.green{
+			color:#00cc00;
+		}
+		i{
+			text-align:center;
+			margin:auto;
+			padding:5px;
+			display:block;
+			width:100%;
 		}
 	</style>
 </head>
 <body>
 	<div id="loading" class="step">
-		<p><input id="search" type="button" value="Search for match" onclick="send({'search':true})"/></p>
+		<p>
+			<i id="total"></i>
+			<input id="search" type="button" value="Játékos keresése" onclick="search();"/>
+		</p>
+	</div>
+	<div id="ending" class="step">
+		<p>Köszönjük a részvételt, a játék véget ért! Vedd le a VR sisakot a fejedről!</p>
 	</div>
 	<div id="game" class="step">
-		<div id="environment">STAGE</div>
-		<div id="opponent" class="player">
+		<div id="stage">STAGE</div>
+		<div id="bot" class="player">
 			<div class="left">
-				<div class="button chose">
-					COOPERATE
+				<div id="cooperate_bot" class="button cooperate">
+					KOOPERÁLÁS
 				</div>
-				<div class="button chose">
-					DEFECT
+				<div id="defect_bot" class="button defect">
+					DEFEKTÁLÁS
 				</div>
 			</div>
 			<div class="right">
-				<div class="nick">NICK</div>
-				<div class="avatar">:)</div>
-				<div class="score">0 (+0)</div>
+				<div id="nick_bot" class="nick">NICK</div>
+				<div id="avatar_bot" class="avatar">:)</div>
+				<div id="score_bot" class="score">0</div>
 			</div>
 		</div>
 		<hr />
 		<div id="subject" class="player">
 			<div class="left">
-				<div class="button click">
-					COOPERATE
+				<div id="cooperate_subject" class="button cooperate click">
+					KOOPERÁLÁS
 				</div>
-				<div class="button click select">
-					DEFECT
+				<div id="defect_subject" class="button defect click">
+					DEFEKTÁLÁS
 				</div>
 			</div>
 			<div class="right">
-				<div class="nick">NICK</div>
-				<div class="avatar">:)</div>
-				<div class="score">0 (+0)</div>
+				<div id="nick_subject" class="nick">YOU</div>
+				<div id="avatar_subject" class="avatar">:)</div>
+				<div id="score_subject" class="score">0</div>
 			</div>
 		</div>
 
@@ -173,19 +198,21 @@
 
 <script>
 $(function() {
+	var WAIT_BETWEEN_PLAYS = 1500
+	var WAIT_ON_EXIT = 3500
+
 	var url = new URLSearchParams(window.location.search)
 	var ip = url.has("ip") ? url.get("ip") : "127.0.0.1"
 	var port = url.has("port") ? url.get("port") : "42069"
 	var socket = "ws://" + ip + ":" + port + "/"
-	var ping = 0;
 	var connected = false;
 	var error = false;
+	var freeze = false;
 
 	// autoconnect
 	var ws = new WebSocket(socket);
 
 	ws.onclose = function(event) {
-		console.log(event);
 		connected = false;
 		if (!error){
 			output("Disconnected from server")
@@ -210,30 +237,144 @@ $(function() {
     ws.onopen = function(event) {
 		connected = true;
 		send({"connect": true, "type":"game"});
+		$(".step").hide();
     };
     ws.onmessage = function (event) {
 		data = JSON.parse(event["data"]);
 		console.log(data)
-		timer = (+ new Date());
-		if (ping){
-			console.log("PING: " + (timer - ping));
-		};
-		ping = 0;
 
 		if (data["type"] == "error"){
 			output(data["data"]["message"]);
 		}else{
-			$(".step").hide();
 			for (key in data["data"]){
 				switch (key){
 					case "connected":
 						if (data["data"]["connected"]){
 							$("#loading").show();
+							$("#search").prop("disabled", false);
 						}
+					break;
+
+					case "search":
+						if (data["data"][key] >= 0){
+							// TODO
+						}
+						$(".button").removeClass("chose").removeClass("select");
+						freeze = false;
+					break;
+
+					case "loading":
+						$(".step").hide();
+						$(".button").removeClass("chose").removeClass("select");
+						setTimeout(function(){$("#game").show()}, data["data"][key] * 1000);
+						freeze = false;
+					break;
+
+					case "color":
+						$("#bot .right").addClass(data["data"][key]);
+						break;
+					case "nick":
+						$("#nick_bot").text(data["data"][key]);
+						break;
+					case "avatar":
+						$("#avatar_bot").text(data["data"][key]);
+						break;
+					case "stage":
+						$("#stage").text(data["data"][key]);
+						break;
+
+					case "move":
+						$("#cooperate_bot").addClass("select").removeClass("chose");
+						$("#defect_bot").addClass("select").removeClass("chose");
+						break;
+					case "move_bot":
+						$("#cooperate_bot").removeClass("select");
+						$("#defect_bot").removeClass("select");
+						if (data["data"]["move_bot"]){
+							$("#cooperate_bot").addClass("chose");
+						}else{
+							$("#defect_bot").addClass("chose");
+						}
+						break;
+					case "move_subject":
+						if (data["data"]["move_subject"]){
+							$("#cooperate_subject").addClass("chose");
+						}else{
+							$("#defect_subject").addClass("chose");
+						}
+
+					case "score_bot":
+						if ("gain_bot" in data["data"]){
+							$("#"+key).text(data["data"][key] + " (+" + data["data"]["gain_bot"]+ ")");
+						}else{
+							$("#"+key).text(data["data"][key]);
+						}
+					break;
+					case "score_subject":
+						if ("gain_subject" in data["data"]){
+							$("#"+key).text(data["data"][key] + " (+" + data["data"]["gain_subject"]+ ")");
+						}else{
+							$("#"+key).text(data["data"][key]);
+						}
+						$("#total").text(data["data"][key] + " pont")
+					break;
+
+					case "rounds_left":
+						if (data["data"][key] <= 0){
+							freeze = true;
+						}else{
+							setTimeout(function(){
+								$("#cooperate_bot").removeClass("chose");
+								$("#defect_bot").removeClass("chose");
+								$("#cooperate_subject").removeClass("chose");
+								$("#defect_subject").removeClass("chose");
+								freeze = false;
+							}, WAIT_BETWEEN_PLAYS);
+						}
+					break;
+
+					case "end":
+						$(".step").hide();
+						$("#loading").show();
+						$("#search").prop("disabled", false);
+						$("#bot_score").text("0");
+						$("#subject_score").text("0");
+						freeze = false;
+						break;
+
+					case "exit":
+						$(".step").hide();
+						$("#ending").show();
+						setTimeout(function(){send({"disconnect":true})}, WAIT_ON_EXIT)
+						return;
 					break;
 				}
 			}
 		}
+	}
+
+	$("#cooperate_subject").click(function(event){
+		if (freeze){
+			return;
+		}
+		freeze = true;
+		$("#cooperate_subject").addClass("chose");
+		$("#defect_subject").removeClass("chose");
+		send({"play": true});
+	});
+	$("#defect_subject").click(function(event){
+		if (freeze){
+			return;
+		}
+		freeze = true;
+		$("#cooperate_subject").removeClass("chose");
+		$("#defect_subject").addClass("chose");
+		send({"play": false});
+	});
+
+	window.search = function(){
+		send({'search':true});
+		$("#search").prop("disabled", true);
 	}
 
 	window.send = function(data){
@@ -243,34 +384,15 @@ $(function() {
 				"type": "game",
 				"data": data
 			};
-			console.log(payload);
 			ws.send(JSON.stringify(payload));
 		}
 	};
-
-    window.restart = function(stop=true){
-        if (stop){
-            send({"terminate": false});
-        }
-        window.location.reload();
-    };
 
 	window.output = function(data){
 		$(".step").hide();
 		$("#output").html("<p>" + data + "</p>").show();
 	};
 
-	window.onkeydown = evt => {
-		switch (evt.keyCode) {
-			// Enter is 13
-			// F2
-        	case 113:
-        		if (current > 0){
-					next();
-				}
-				break;
-		}
-	};
 });
 
 </script>

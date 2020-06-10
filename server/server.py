@@ -15,9 +15,6 @@ from game import Game
 
 class Server:
 
-	LOG_HEADSET = 10  # save every 10th update
-	LOG_HEADSET_PREFIX = "headset_"
-
 	def __init__(self, ip="", port=42069, fps=1,
 				log_level=3, log_folder="", log_info="", log_game="", log_headset=""):
 		"""Init Server class. Will run on local IP:42069 by default.
@@ -154,6 +151,7 @@ class Server:
 								return
 							if sid:
 								self.environment["sid"] = sid
+								self.environment["game_over"] = False
 								self.log(f'Subject ID was set, starting experiment', 1)
 							else:
 								self.log(f'ERROR! Subject id is invalid.', 2)
@@ -189,6 +187,7 @@ class Server:
 
 						if "sid" not in self.environment:
 							self.log(f'ERROR! All messages will be ignored until "sid" is set.', 2)
+							await self.send(client, "error", {"message": "Subject ID and information is not yet given."})
 							continue
 
 						# can not continue if subject's profile is not set and game is not connected
@@ -200,7 +199,13 @@ class Server:
 									ready = False
 							if ready:
 								if "ready" not in self.environment or not self.environment["ready"]:
+									# tried to replay
+									if "game_over" in self.environment and self.environment["game_over"]:
+										await self.send(client, "error", {"message": "Subject has already played a game."})
+										continue
+									# create game environment for new player
 									self.environment["ready"] = True
+									self.environment["game_over"] = False
 									self.environment["game"] = Game(self.environment["sid"])  # use SID as random seed
 									self.environment["game"].generate(self.environment["avatar"], bool(self.environment["gender"]))
 
@@ -232,19 +237,25 @@ class Server:
 									for env_key in env:
 										self.save_game(env_key, env[env_key])
 									await self.hook(lambda: self.send(client, "game", env), env["loading"])
-									await self.hook(lambda: self.move_bot(client), env["loading"] + 1.)
+									await self.hook(lambda: self.play_bot(client), env["loading"] + env["wait"])
 								else:
 									# no more games to play, subject can exit VR
-									await self.broadcast({""})
-
+									await self.game_over()
+									self.log(f'Subject {self.id(client)} has finished playing', 1)
 							elif key == "play":
-								self.save_game("move_subject", value)
-
+								# in case of reconnecting before searching
+								if self.environment["game"].is_playing():
+									# saving is handled by function
+									await self.play_subject(client, bool(value))
+								else:
+									# ignore move, fore new match
+									await self.send(client, "game", {"end": True})
 							elif key == "disconnect":
 								self.environment["ready"] = False
+								self.environment["game_over"] = True
 								self.save_game(key, value)
-								await self.send(client, "game", {"ready": False})
-								self.log(f'Subject {self.id(client)} has finished playing', 1)
+								#await self.send(client, "game", {"exit": True})
+								self.log(f'Subject {self.id(client)} has disconnected', 1)
 							elif key != "connect":
 								self.log(f'ERROR! Unknown "game" key "{key}"', 2)
 
@@ -303,24 +314,42 @@ class Server:
 			stamp += 1
 		self.environment["trigger"][stamp] = function
 
-	async def move_bot(self, client):
+	async def play_bot(self, client):
 		if "game" not in self.environment:
 			self.log("ERROR! Game environment is not set, can not make move.")
 			return
 		if await self.environment["game"].play_bot():
-			await self.score_match(client, "move_user")
+			await self.score_game(client, "play_subject")
 		else:
-			self.save_game("move_bot", self.environment["game"].move_bot)
+			self.save_game("play_bot", self.environment["game"].move_bot)
 			await self.send(client, "game", {"move": True})
 
-	async def score_match(self, client, ignore_save=""):
-		results = self.environment["game"]
+	async def play_subject(self, client, move):
+		if "game" not in self.environment:
+			self.log("ERROR! Game environment is not set, can not make move.")
+			return
+		if self.environment["game"].play_subject(move):
+			await self.score_game(client, "play_bot")
+		else:
+			self.save_game("play_subject", move)
+
+	async def score_game(self, client, ignore_save=""):
+		results = self.environment["game"].score_game()
 		for key in results:
 			if key != ignore_save:
 				self.save_game(key, results[key])
 		await self.send(client, "game", results)
+		# new move
+		if results["rounds_left"] > 0:
+			await self.play_bot(client)
+		else:
+			await self.hook(lambda: self.send(client, "game", {"end": True}), 2.)
 
-
+	async def game_over(self):
+		self.environment["game_over"] = True
+		total = self.environment["game"].score_subject_all
+		self.save_game("score_subject_all", total)
+		await self.broadcast({"search": -1, "exit": True})
 
 	async def tic(self):
 		"""Generate tics in background to send information async."""
@@ -332,8 +361,9 @@ class Server:
 					if "trigger" in self.environment and self.environment["trigger"]:
 						for stamp in self.environment["trigger"]:
 							if stamp <= current:
-								await self.environment["trigger"][stamp]()
-								self.environment["trigger"][stamp] = None
+								if self.environment["trigger"][stamp] is not None:
+									await self.environment["trigger"][stamp]()
+									self.environment["trigger"][stamp] = None
 						# delete None
 						self.environment["trigger"] = {k: v for k, v in self.environment["trigger"].items() if v is not None}
 				except Exception as et:
@@ -370,6 +400,8 @@ class Server:
 				await client.send(payload)
 		except TypeError as ej:
 			self.log(f'ERROR! Unable to dump payload: {ej}.', 2)
+			print(payload)
+			raise ej
 		except Exception as ep:
 			self.log(f"ERROR! Unable to send payload to {self.id(client)}: {ep}.", 2)
 

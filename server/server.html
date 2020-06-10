@@ -50,7 +50,7 @@
 		<p>
 			Azonosító: <input type="text" id="sid" placeholder="" required="required" autocomplete="off"/>
 			<input type="hidden" id="type" value="info" />
-			<input type="button" class="button" value="Indítás" onclick="fill({'sid': true, 'client': true});"/>
+			<input type="button" class="button" value="Indítás" onclick="fill({'sid': true, 'type': true});"/>
 		</p>
 	</div>
 	<div id="hello" class="step">
@@ -79,6 +79,18 @@
 	<div id="ready" class="step">
 		<p>Vedd fel a headsetet!</p>
 	</div>
+	<div id="over" class="step">
+		<p>
+			Vége a játéknak
+			<input type="button" class="button" value="Tovább" onclick="next();"/>
+		</p>
+	</div>
+	<div id="other" class="step">
+		<p>
+			Itt még majd ki kell tölteni dolgokat.
+		</p>
+	</div>
+
 
 	<div id="output" class="step">
 		<p>Connecting...</p>
@@ -91,13 +103,12 @@ $(function() {
 	var port = url.has("port") ? url.get("port") : "42069"
 	var skip = url.has("skip") ? parseInt(url.get("skip")) : 0
 	var socket = "ws://" + ip + ":" + port + "/"
-	var ping = 0;
 	var connected = false;
 	var error = false;
 
 	var current = -1;
 	// var steps = ["init", "hello", "q1", "q2", "login", "ready", "vr"];
-	var steps = ["init", "login", "ready", "vr"]
+	var steps = ["init", "login", "ready", "over", "other"]
 
 	// autoconnect
 	var ws = new WebSocket(socket);
@@ -133,12 +144,9 @@ $(function() {
     };
     ws.onmessage = function (event) {
 		data = JSON.parse(event["data"]);
-		timer = (+ new Date());
-		if (ping){
-			console.log("PING: " + (timer - ping));
+		if (data["data"]["exit"]){
+			next();
 		}
-		ping = 0;
-
 		console.log(data)
 	}
 
@@ -149,7 +157,6 @@ $(function() {
 				"type": "info",
 				"data": data
 			};
-			console.log(payload);
 			ws.send(JSON.stringify(payload));
 		}
 	};

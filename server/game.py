@@ -7,8 +7,8 @@ import asyncio
 
 class Game:
 
-	F_NICKS = -1 * np.arange(20) - 1  # TODO: add list of names
-	M_NICKS = np.arange(20) + 1  # TODO: ad list of names
+	F_NICKS = [f'Űr-Tibi_{i}' for i in range(20)]  # TODO: add list of names
+	M_NICKS = [f'Ős Klára {i}' for i in range(20)]  # TODO: ad list of names
 	COLORS = ["red", "green"]
 	STRATEGIES = ["tft", "grim", "pavlov", "susp_tft", "hard_majo", "per_dc", "all_c", "all_d", "random"]
 	STAGES = ["temple", "jail", "lab", "home", "forest", "station", "beach", "junkyard", "tron"]
@@ -16,6 +16,8 @@ class Game:
 	DUPLICATE_FROM = 2
 	DUPLICATE_TO = 4
 	NUMBER_OF_GAMES = 5
+	WAIT_BETWEEN_GAMES = 1.5
+	WAIT_AT_MATCH_START = 2.5
 
 	def __init__(self, seed):
 		self.seed = seed
@@ -34,7 +36,7 @@ class Game:
 	def generate(self, avatar, gender):
 		"""Generate environment and opponents based on seed"""
 		np.random.seed(self.seed)
-		self.current = -1
+		self.current = 7  # -1
 		self.score_subject_current = 0
 		self.score_subject_all = 0
 		self.score_bot_current = 0
@@ -73,11 +75,10 @@ class Game:
 		genders = self._rematch(genders)
 		nicks = self._rematch(nicks)
 		rounds = np.ones(len(strategies)) * self.NUMBER_OF_GAMES
-
 		# create bots based on generated data
 		for nick, opponent, gender, stage, strategy, round \
 				in zip(nicks, opponents, genders, stages, strategies, rounds):
-			self.bots.append(Bot(nick, avatar, gender, stage, strategy, round))
+			self.bots.append(Bot(nick, opponent, gender, stage, strategy, round))
 		return self
 
 	def _rematch(self, data):
@@ -104,7 +105,12 @@ class Game:
 		if self.current >= len(self.bots):
 			raise ValueError("Game is already over, no more environments are available")
 		env = self.bots[self.current].get_environment()
+		env["wait"] = self.WAIT_AT_MATCH_START  # wait at match start
 		env["color"] = self.color  # color is same for all bots
+		# resend values in case it was a reconnect
+		env["search"] = self.current
+		env["score_subject"] = self.score_subject_current
+		env["score_bot"] = self.score_bot_current
 		return env
 
 	def play_subject(self, move):
@@ -116,7 +122,7 @@ class Game:
 	async def play_bot(self):
 		if not self.bots:
 			raise ValueError("Environment is not yet generated")
-		await asyncio.sleep(np.random.rand() * 3)
+		await asyncio.sleep(np.random.rand() * 4 + self.WAIT_BETWEEN_GAMES)
 		self.move_bot = self.bots[self.current].move()
 		return self.move_subject is not None
 
@@ -125,21 +131,37 @@ class Game:
 			raise ValueError("Environment is not yet generated")
 		if self.move_bot is None or self.move_subject is None:
 			raise ValueError("Both subject and bot has to make a move")
-		rounds_left, bot_gain, subject_gain = self.bots[self.current].play(self.move_bot, self.move_subject)
+		rounds_left, gain_bot, gain_subject = self.bots[self.current].play(self.move_bot, self.move_subject)
+
 		tmp_bot, tmp_subject = self.move_bot, self.move_subject
 		self.move_bot = None
 		self.move_subject = None
-		self.score_bot_current += bot_gain
-		self.score_bot_all += bot_gain
-		self.score_subject_current += subject_gain
-		self.score_subject_all += subject_gain
+
+		self.score_bot_current += gain_bot
+		self.score_bot_all += gain_bot
+		self.score_subject_current += gain_subject
+		self.score_subject_all += gain_subject
+
 		return {
-			"rounds_left": rounds_left,
-			"score_bot": self.score_bot_current,
-			"score_subject": self.score_subject_current,
-			"move_bot": tmp_bot,
-			"move_subject": tmp_subject
+			"rounds_left": int(rounds_left),
+			"gain_bot": int(gain_bot),
+			"gain_subject": int(gain_subject),
+			"score_bot": int(self.score_bot_current),
+			"score_subject": int(self.score_subject_current),
+			"move_bot": bool(tmp_bot),
+			"move_subject": bool(tmp_subject)
 		}
+
+	def is_playing(self):
+		if not self.bots:
+			return False
+		if self.current < 0:
+			return False
+		if self.current >= len(self.bots):
+			return False
+		if not self.bots[self.current].round:
+			return False
+		return True
 
 
 class Bot:
@@ -150,7 +172,7 @@ class Bot:
 		self.gender = gender
 		self.stage = stage
 		self.strategy = strategy
-		self.round = round
+		self.round = int(round)
 		self.loading = np.random.rand() * 2.
 
 		self.history_bot = []
@@ -163,7 +185,7 @@ class Bot:
 			"avatar": str(self.avatar),
 			"gender": bool(self.gender),
 			"stage": str(self.stage),
-			"loading": float(self.loading)
+			"loading": float(self.loading),
 		}
 
 	def reset(self):
