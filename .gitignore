@@ -1,7 +1,7 @@
 experiments/
 
 # Visual Studio Code
-
+.idea/
 .vscode/
 
 # Byte-compiled / optimized / DLL files
