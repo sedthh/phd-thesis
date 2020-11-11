@@ -428,12 +428,12 @@ if __name__ == "__main__":
 	import argparse
 
 	parser = argparse.ArgumentParser("Run server from command line")
-	parser.add_argument("-ip", help="IP of server, defaults to current IP", type=str, default="", required=False)
-	parser.add_argument("-port", help="Port of server, defaults to 42069", type=int, default=42069, required=False)
-	parser.add_argument("-log_level", help="Log level for debugging", type=int, default=3, required=False)
-	parser.add_argument("-log_folder", help="Folder for logs", type=str, default="../experiments", required=False)
-	parser.add_argument("-log_info", help="File name of Info logs in 'log_folder'", type=str, default=f"{Server.now('%Y-%m-%d')}_info.csv", required=False)
-	parser.add_argument("-log_game", help="File name of Info logs in 'log_folder'", type=str, default=f"{Server.now('%Y-%m-%d')}_game.csv", required=False)
+	parser.add_argument("--ip", help="IP of server, defaults to current IP", type=str, default="", required=False)
+	parser.add_argument("--port", help="Port of server, defaults to 42069", type=int, default=42069, required=False)
+	parser.add_argument("--log_level", help="Log level for debugging", type=int, default=3, required=False)
+	parser.add_argument("--log_folder", help="Folder for logs", type=str, default="../experiments", required=False)
+	parser.add_argument("--log_info", help="File name of Info logs in 'log_folder'", type=str, default=f"{Server.now('%Y-%m-%d')}_info.csv", required=False)
+	parser.add_argument("--log_game", help="File name of Info logs in 'log_folder'", type=str, default=f"{Server.now('%Y-%m-%d')}_game.csv", required=False)
 	args = parser.parse_args()
 	server = Server(ip=args.ip, port=args.port, log_level=args.log_level, log_folder=args.log_folder, log_info=args.log_info, log_game=args.log_game)
 	server.run()
