@@ -31,14 +31,14 @@ The "info" type is used by the login form to send data about the user. The "game
 ```
 2. Search for a random opponent:
 ```javascript
-{"type":"game", "data":{"search": true}}
+{"type":"game", "data":{"searching": true}}
 ```
 3. Once an opponent was found, the choices within the game can be sent the following way:
 ```javascript
 {"type":"game", "data":{"play": true}}  # cooperate
 {"type":"game", "data":{"play": false}}  # defect
 ```
-4. Disconnect (sned this when the experiment is over and ```{exit: true}``` was received also):
+4. Disconnect (send this when the experiment is over and ```{exit: true}``` was received also):
 ```javascript
 {"type":"game", "data":{"disconnect": true}}
 ```

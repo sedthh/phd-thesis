@@ -222,7 +222,7 @@ class Server:
 							if key == "type":
 								self.connections[client]["type"] = value
 								self.log(f'Client {self.id(client)} was identified', 2)
-							elif key == "search":
+							elif key == "searching":
 								search = self.environment["game"].search()
 								if search >= 0:
 									env = self.environment["game"].get_environment()
