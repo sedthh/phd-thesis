@@ -15,4 +15,84 @@ The environment consists of a Python server, an HTML frontend for logging users 
 TODO: what to do when a subject pauses or interrupts the experiment.
 
 # Server API Documentation
+Both sent and received payloads have similar formats:
+```javascript
+{
+    "type":"game",  # can be "info", "game" and "error" (received)
+    "data": {...}   # dictionary with MULTIPLE key: value pairs
+}
+```
+The "info" type is used by the login form to send data about the user. The "game" type is dedicated for the headset (or any other game frontend). Once user information is available the JSON objects for data exchange are the following:
 
+**Server accepts:**
+1. Connect (or reconnect to ongoing experiment) to the server as a "game" frontend:
+```javascript
+{"type":"game", "data":{"connect": true, "type":"game"}}
+```
+2. Search for a random opponent:
+```javascript
+{"type":"game", "data":{"search": true}}
+```
+3. Once an opponent was found, the choices within the game can be sent the following way:
+```javascript
+{"type":"game", "data":{"play": true}}  # cooperate
+{"type":"game", "data":{"play": false}}  # defect
+```
+4. Disconnect (sned this when the experiment is over and ```{exit: true}``` was received also):
+```javascript
+{"type":"game", "data":{"disconnect": true}}
+```
+
+**Server sends**
+
+NOTE: the data:{} object can have multiple key:value pairs!
+
+1. On error (most error messages are not sent but logged):
+```javascript
+{"type":"error", "data":{"message": "The error message"}}
+```
+2. On connection established (all requirements were met and connection request was sent from game device):
+```javascript
+{"type":"game", "data":{"connected": true}}
+```
+3. Number of opponents remaining:
+```javascript
+{"type":"game", "data":{"search": 1}}  # if < 0 no more games are left
+```
+4. Show loading screen for a few seconds:
+```javascript
+{"type":"game", "data":{"loading": 2.5}}  # 2500 miliseconds
+```
+5. Setting up the environment
+```javascript
+{"type":"game", "data":{
+    "color": "red",  # color of text for opponent
+    "nick": "Tibi",  # name of opponent
+    "avatar": "pirate", # avatar of opponent
+    "stage": "temple"   # stage to play the match
+}}
+```
+6. Send notification if opponent has already made their move (the move itself is unknown):
+```javascript
+{"type":"game", "data":{"move": true}}
+```
+7. Results of a single match (both players haven chosen a strategy)
+```javascript
+{"type":"game", "data":{
+    "rounds_left": 1,   # number of rounds left, 0 means the match is over
+    "gain_bot": 3,  # points gained by opponent this round
+    "gain_subject": 3,  # points gained by player this round
+    "score_bot": 10,    # total points of opponent for this match
+    "score_subject": 12,    # total points of player for this match
+    "move_bot": True,   # previously selected move of opponent
+    "move_subject": False   # prviously selected move of player
+}}
+```
+8. Match has ended, show "search" button for subject to be able to look for another opponent:
+```javascript
+{"type":"game", "data":{"end": true}}
+```
+9. The experiment is over, there are no more opponents. The subject is notified that they should remove their headset and go back to finishing the forms:
+```javascript
+{"type":"game", "data":{"exit": true}}
+```
