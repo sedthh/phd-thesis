@@ -48,40 +48,198 @@
 <body>
 	<div id="init" class="step">
 		<p>
-			Azonosító: <input type="text" id="sid" placeholder="" required="required" autocomplete="off"/>
+			Egyedi azonosító: <input type="text" id="sid" placeholder="" required="required" autocomplete="off"/>
 			<input type="hidden" id="type" value="info" />
 			<input type="button" class="button" value="Indítás" onclick="fill({'sid': true, 'type': true});"/>
 		</p>
 	</div>
-	<div id="hello" class="step">
+	<div id="hello_safety" class="step">
 		<p>
-			Hello ez egy kísérlet.<br />
-			- nincs epilepsziád
-			<input type="button" class="button" value="Elolvastam és elfogadom az itt leírtakat" onclick="next();"/>
+			<h3>Köszönjük, hogy részt veszel játékelméleti kutatásunkban!</h3>
+			<br />
+			A kutatás során Virtuális Valóságban fogsz más játékosokkal együtt játszani, több környi, rövid fogolydilemma játékot.<br />
+			<br />
+			Kérünk alaposan olvasd el az alábbi egészségügyi útmutatót:
+			<ul>
+				<li>Csak akkor vehetsz részt a kutatásban, ha **nem szenvedsz epilepsziás betegségben**. A Virtuális Valóságban felvillanó fények és gyors vizuális ingerek bizonyos személyeknél epilepsziás rohamot okozhatnak.</li>
+				<li>Csak akkor vehetsz részt a kutatásban, ha **nem vagy várandós és nincs semmilyen szívproblémád**. Ezt az egészésügyi megkötést több videójáték is alkalmazza.</li>
+			</ul>
+			<br />
+			A Virtuális Valóság szemüvegek **hosszabb** használata sokaknál enyhe szédülést, ritkán hányingert is kiválthat. Ennek oka, hogy belső fülünk más fajta mozgást érzékel, mint amit látunk, hasonlóan a mozgó járművekben érzett rosszulléttől. Ezek a problémák a szemüvegek gyakori használatával, szoktatással enyhülnek, és a felhasználó idővel jóval hosszabb periódusokra is képes lesz viselni a szemüveget.<br />
+			Körülbelül 10-15 percig leszel csak Virtuális Valóságban.<br />
+			**Amennyiben mégis rosszul érzed magad, vagy bármilyen problémád van, jelezd felénk, a kisérlet akármikor megszakítható.**<br />
+			<br />
+			<br />
+			A kutatás során létrejövő adataidat (beleértve az általad megadott és a játék során megtett mozgásokat, kiválassztott interakciókat) menteni fogjuk.
+			A mentett adatokata kutatás eredményeivel együtt anonimizáltan (neved és elérhetőséged nélkül), publikusan felhasználhatóvá fogjuk tenni. A folytatással beleegyezel, hogy 
+			a kísérlet során generálódott adataidat kutatási célokra felhasználhatjuk és mások számára elérhetővé tehetjük. 
+			<br />
+			<input type="button" class="button" value="Elfogadom a leírtakat és nincs olyan egészségügyi problémám, ami gátolna a részvételben." onclick="next();"/>
+		</p>
+	</div>
+	<div id="hello_game" class="step">
+		<p>
+			<h3>Az online multiplayer játék menete:</h3>
+			<br />
+			<ul>
+				<li>Virtuális Valóságban fogsz más emberekkel találkozni, akikkel különböző játék helyszineken fogsz rövid ideig játszani, végig ülve. </li>
+				<li>A Virtuális Valóságban mindenki egy avatarként fog megjelenni és csak a fejmozgásukat fogod látni. Ebből kell következtetned a döntéseikre! </li>
+				<li>Hasonlóan, ők is csak a fejmozgásodat és avatarodat fogják látni. </li>
+				<li>A játékok egyszerű, több körös fogolydilemma (Prisoner's Dilemma) játékok lesznek, ahol választanod kell, hogy **együttműködsz**-e a másikkal vagy **kihasználhatod** őt. </li>
+				<li>A játékosok véletlenszerűen lesznek összesorsolva (az épp aktívak közül), így előfordulhat, hogy ugyanazzal a személlyel többször is játszani fogsz. </li>
+				<li>A feladatod, hogy **minél több** pontot érj el **összesítve** a körök végére. </li>
+				<li>A legtöbb pontot elért 3 játékost különdíjban részesítjük. </li>	
+			</ul>
+			Összefoglalva: a rövid online játékok során, pusztán a többi játékos fejmozgására hagyatkozva kell kiismerned őket és minél több pontot szerezned.<br />
+			<br />
+			<h3>A fogolydilemma leírása:</h3>
+			# TODO
+
+			<br />
+			<input type="button" class="button" value="Elolvastam és megértettem a játékszabályokat." onclick="next();"/>
+		</p>
+	</div>
+	<div id="q_demo" class="step">
+		<p>
+			<h3>Alapvető információid megadása:</h3>
+			
+			Nemed:
+			<select id="form_gender" required="required">
+				<option value="0" selected="selected">férfi</option>
+				<option value="1">nő</option>
+				<option value="-1">egyéb / nem válaszol</option>
+			</select>
+			<br />
+			Korod:
+			<input type="text" id="form_age" placeholder="" required="required" autocomplete="off"/>
+			<br />
+			Milyen kezes vagy?
+			<select id="form_hand" required="required">
+				<option value="0">mindig bal</option>
+				<option value="1">általában bal</option>
+				<option value="2">nincs preferencia</option>
+				<option value="3">általában jobb</option>
+				<option value="4" selected="selected">mindig jobb</option>
+			</select>
+			<br />
+			Hordasz-e szemüveget, vagy kontaktlencsét?
+			<select id="form_glasses">
+				<option value="0" selected="selected">nem</option>
+				<option value="1">igen, de csak munkához, olvasáshoz, stb.</option>
+				<option value="2">igen, a mindennapokhoz</option>
+			</select>
+			<br />
+			Szenvedsz-e színtévesztésben, színvakságban?
+			<select id="form_colorblind">
+				<option value="0" selected="selected">nem</option>
+				<option value="1">piros / zöld</option>
+				<option value="2">kék / srága</option>
+				<option value="3">monokromázia</option>
+				<option value="4">egyéb</option>
+			</select>
+			<br />
+			<input type="button" class="button" value="Tovább" onclick="fill({'form_gender':true, 'form_age':true, 'form_hand':true, 'form_glasses':true, 'form_colorblind':true});"/>
+		</p>
+	</div>
+	<div id="q_game" class="step">
+		<p>
+
+			<fieldset>      
+				<legend>Tudod-e mi az a fogolydilemma?</legend>
+				<select id="form_prisoners" required="required">
+					<option value="0" selected="selected">nem hallottam még róla</option>
+					<option value="1">már hallottam róla, de nem tudnám elmagyarázni</option>
+					<option value="2">ismerem és el is tudnám magyarázni</option>
+					<option value="3">nagyon jól ismerem, foglalkoztam a fogalommal</option>
+				</select>
+			</fieldset>
+
+			<fieldset>      
+				<legend>Milyen gyakran játszol videójátékokkal?</legend>
+				<select id="form_videogames" required="required">
+					<option value="0" selected="selected">soha nem játszom</option>
+					<option value="1">havonta, vagy ritkábban</option>
+					<option value="2">havonta több alkalommal</option>
+					<option value="3">hetente több alkalommal</option>
+					<option value="4">majdnem minden nap</option>
+				</select>
+			</fieldset>
+			
+			<fieldset>      
+				<legend>Milyen gyakran játszol online, multiplayer videójátékkokal?</legend>
+				<select id="form_videogames_online" required="required">
+					<option value="0" selected="selected">soha nem játszom</option>
+					<option value="1">havonta, vagy ritkábban</option>
+					<option value="2">havonta több alkalommal</option>
+					<option value="3">hetente több alkalommal</option>
+					<option value="4">majdnem minden nap</option>
+				</select>
+			</fieldset>
+			<br />
+			Kedvenc videójátékaid:
+			<input type="text" id="form_videogames_favorite" placeholder="" autocomplete="off"/>
+			<br />
+
+			# TODO: illusztrációk
+			<fieldset>      
+				<legend>Próbáltál-e már egyszerű, 3DOF, okostelefonnal működő (pl: Cardboard, Samsung Gear) virtuális valóság sisakot?</legend>
+				<select id="form_vr_3dof" required="required">
+					<option value="0" selected="selected">nem</option>
+					<option value="1">igen próbáltam már ilyen eszközt</option>
+					<option value="2">igen van is otthon ilyen eszközöm</option>
+					<option value="-1">nem tudom</option>
+				</select>
+			</fieldset>
+			
+			<fieldset>      
+				<legend>Próbáltál-e már különálló, 6DOF (pl: Oculus, Vive, PSVR, stb.) sisakot?</legend>
+				<select id="form_vr_6dof" required="required">
+					<option value="0" selected="selected">nem</option>
+					<option value="1">igen próbáltam már ilyen eszközt</option>
+					<option value="2">igen van is otthon ilyen eszközöm</option>
+					<option value="-1">nem tudom</option>
+				</select>
+			</fieldset>
+			
+			Ha válaszod alapján bármilyen sisak elérhető számodra otthon vagy a munkahelyeden, iskoládban, akkor kérlek sorold fel itt őket:
+			<input type="text" id="form_vr_available" placeholder="" autocomplete="off"/>
+			
+			<input type="button" class="button" value="Tovább" onclick="fill({'form_videogames':true, 'form_videogames_online':true, 'form_videogames_favorite': true, 'form_vr_3dof':true, 'form_vr_6dof':true, 'form_vr_available':true});"/>
+			<br />
 		</p>
 	</div>
 	<div id="login" class="step">
 		<p>
-			<input type="text" id="nick" placeholder="név" required="required" autocomplete="off"/>
+			<h3>Saját játékos létrehozása:</h3>
+
+			Becenév (látszani fog a másik játékos számára):
+			<input type="text" id="nick" placeholder="" required="required" autocomplete="off"/>
+			<br />
+			Avatar neme:
 			<select id="gender" required="required">
 				<option value="0" selected="selected">férfi</option>
 				<option value="1">nő</option>
 			</select>
+			<br />
+			Avatár kiválasztása:
 			<select id="avatar" required="required">
 				<option value="0" selected="selected">0 mesh</option>
 				<option value="1">1 mesh</option>
 				<option value="1">2 mesh</option>
 			</select>
 
+			<br />
 			<input type="button" class="button" value="Csatlakozás" onclick="fill({'nick':true, 'avatar':true, 'gender':true});"/>
 		</p>
 	</div>
 	<div id="ready" class="step">
-		<p>Vedd fel a headsetet!</p>
+		<p>
+			Kezdődhet a játék! Vedd fel a headsetet!
+		</p>
 	</div>
 	<div id="over" class="step">
 		<p>
-			Vége a játéknak
+			A játék sikeresen befejeződött. Már csak néhány válaszra van szükségünk tőled a befejezéshez!
 			<input type="button" class="button" value="Tovább" onclick="next();"/>
 		</p>
 	</div>
@@ -93,7 +251,7 @@
 
 
 	<div id="output" class="step">
-		<p>Connecting...</p>
+		<p>Kapcsolódás...</p>
 	</div>
 
 <script>
@@ -102,13 +260,19 @@ $(function() {
 	var ip = url.has("ip") ? url.get("ip") : "127.0.0.1"
 	var port = url.has("port") ? url.get("port") : "42069"
 	var skip = url.has("skip") ? parseInt(url.get("skip")) : 0
+	var quick = url.has("quick")
 	var socket = "ws://" + ip + ":" + port + "/"
 	var connected = false;
 	var error = false;
 
 	var current = -1;
-	// var steps = ["init", "hello", "q1", "q2", "login", "ready", "vr"];
-	var steps = ["init", "login", "ready", "over", "other"]
+	if (quick){
+		// for game testing, ignore logging user data
+		 var steps = ["init", "login", "ready", "over"];
+	}else{
+		// running experiment
+		var steps = ["init", "hello_safety", "hello_game", "q_demo", "q_game", "login", "ready", "over", "other"]
+	}
 
 	// autoconnect
 	var ws = new WebSocket(socket);
@@ -201,7 +365,7 @@ $(function() {
 			var test = $("#" + key);
 			if (test.length){
 				if (test.prop("required")){
-					if (!test.val() || ! test.val().length){
+					if (!test.val() || !test.val().length){
 						test.addClass("required");
 						missing += 1;
 					}else if (key == "sid"){
