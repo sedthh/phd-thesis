@@ -139,13 +139,18 @@ class Server:
 						if "sid" in message["data"]:
 							try:
 								sid = int(self._for_csv(message["data"]["sid"]))
-							except Exception as ei:
+							except Exception as _:
 								self.log(f'ERROR! Subject ID can only be numeric, stopping experiment.', 1)
 								return
 							if sid:
+								# reset all and assign subject id
+								self.environment = {}
 								self.environment["sid"] = sid
+								self.environment["ready"] = False
 								self.environment["game_over"] = False
 								self.log(f'Subject ID was set, starting experiment', 1)
+								# in case a game environment was already connected
+								await self.broadcast({"exit": False})
 							else:
 								self.log(f'ERROR! Subject id is invalid.', 2)
 								continue
@@ -182,7 +187,7 @@ class Server:
 							self.log(f'ERROR! All messages will be ignored until "sid" is set.', 2)
 							await self.send(client, "error", {"message": "Subject ID and information is not yet given."})
 							continue
-
+						
 						# can not continue if subject's profile is not set and game is not connected
 						if "connect" in message["data"]:
 							ready = True
@@ -212,9 +217,10 @@ class Server:
 									await self.send(client, "game", env)
 									self.log(f'Subject {self.id(client)} has reconnected', 1)
 							else:
-								await self.send(client, "error", {"message": "Subject is not ready setting up their profile."})
+								await self.send(client, "error", {"message": "Connection was refused because the subject's profile is not yet set up correctly."})
 						if "ready" not in self.environment or not self.environment["ready"]:
 							self.log('ERROR! Subject needs to set up their profile before the experiment can start.', 2)
+							await self.send(client, "error", {"message": "Subject is not ready setting up their profile."})
 							continue
 
 						# check data
@@ -342,7 +348,7 @@ class Server:
 		self.environment["game_over"] = True
 		total = self.environment["game"].score_subject_all
 		self.save_game("score_subject_all", total)
-		await self.broadcast({"search": -1, "exit": True})
+		await self.broadcast({"search": -1, "exit": True, "history": self.environment["game"].readable()})
 
 	async def tic(self):
 		"""Generate tics in background to send information async."""

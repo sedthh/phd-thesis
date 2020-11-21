@@ -3,7 +3,7 @@
 **Please ignore this page if you are a subject candidate for this experiment, as it reveals crucial parts of the experiment, and can skew the results by spoiling the test environment's inner workings.** 
 
 # Step by step guide to conducting experiments
-The environment consists of a Python server, an HTML frontend for logging users into the environment and the game module (both HTML for testing purposes and a Unity based VR game). 
+The environment consists of a Python server, an HTML frontend for logging users into the environment and the game module (both HTML for testing purposes and a Unity based VR game). A Python 3 environemnt with *pipenv* installed is required.
 * On a Windows PC go to *game/* and start the server with *run.bat* which will create the Python virtual environment and initiate the server with logging turned on. You can define your own address via *--ip* and *--port* arguments as well as the logging folder and file prefixes. Leave the command line open!
 * Once the server is listening, open *login.html* with a browser that allows websocket access for local webpages (like Chrome or Firefox)! You can define the server's address by setting the following GET parameters: "login.html?ip=...&port=..." to match the values printed on the command line. If the connection was successfull, an input area will appear on the webpage asking for an ID, while the server's command line will show an incomming connection.
 * Each subject must have their own unique ID assigned. These IDs must not collide and can never be the same for two people. After the ID of a subject is set, the subjects are asked to provide additional information, which includes setting up their avatars. Once all information is set, the webpage will inform the subject to start playing (put on a headset). 
@@ -94,5 +94,5 @@ NOTE: the data:{} object can have multiple key:value pairs!
 ```
 9. The experiment is over, there are no more opponents. The subject is notified that they should remove their headset and go back to finishing the forms:
 ```javascript
-{"type":"game", "data":{"exit": true}}
+{"type":"game", "data":{"exit": true}}  // true if the game has ended successfully
 ```

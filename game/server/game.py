@@ -163,6 +163,10 @@ class Game:
 			return False
 		return True
 
+	def readable(self):
+    	# readable format
+		return [bot.get_environment() for bot in self.bots]
+
 
 class Bot:
 
