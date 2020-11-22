@@ -409,8 +409,8 @@ $(function() {
 			$("#form_opponent_best").html(avatars)
 			$("#form_opponent_worst").html(avatars)
 		}
-		console.log(data)
-	}
+		// console.log(data);
+	};
 
 	window.send = function(data){
 		if (ws){
@@ -445,14 +445,24 @@ $(function() {
 				console.log("Maximum steps reached at " + current);
 			}
 		}
+		if (current > 0){
+			localStorage.setItem("checkpoint", current)
+		}
+		display();
+	};
+
+	window.display = function(loadCheckpoint=false){
+		if (loadCheckpoint){
+			current = parseInt(localStorage.getItem("checkpoint"))  || -1;
+		}
 		$(".step").hide();
 		$("#" + steps[current]).show();
 		$("input[type='button']").prop("disabled", false);
-	};
+	}
 
 	window.output = function(data){
 		$(".step").hide();
-		$("#output").html("<p>" + data + "</p>").show();
+		$("#output").html('<p class="centered">' + data + '</p>').show();
 	};
 
 	window.fill = function(forms){
@@ -529,11 +539,15 @@ $(function() {
 				}
 			
 				break;
-			// F2 to skip questions
+			// F2 skip to last checkpoint if any
         	case 113:
-        		if (current >= 0){
-					next();
-				}
+        		display(true);
+				break;
+			// F4 skip game (only works at parts whene the game should be running)
+				case 115:
+        			if (current > 0 && (steps[current] == "ready" || steps[current] == "over")){
+						next();
+					}
 				break;
 		}
 	};
