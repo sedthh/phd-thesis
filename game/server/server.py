@@ -139,8 +139,9 @@ class Server:
 						if "sid" in message["data"]:
 							try:
 								sid = int(self._for_csv(message["data"]["sid"]))
+								assert sid > 0
 							except Exception as _:
-								self.log(f'ERROR! Subject ID can only be numeric, stopping experiment.', 1)
+								self.log(f'ERROR! Subject ID can only be a positive integer, stopping experiment.', 1)
 								return
 							if sid:
 								# reset all and assign subject id
